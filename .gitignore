@@ -1,27 +1,166 @@
-# Python sanal ortamı
-venv/
+# .gitignore
+# Bu dosya, Git'in hangi dosyaları ve klasörleri sürüm kontrolüne almayacağını belirler.
+# Hassas bilgilerin ve gereksiz dosyaların GitHub'a yüklenmesini önler.
 
-# Streamlit secrets (API anahtarları vb.)
+# --- Sanal Ortamlar ---
+# Python sanal ortam klasörleri (venv)
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# --- Hassas Bilgiler ve API Anahtarları ---
+# Streamlit secrets (API anahtarları vb.) - ÇOK ÖNEMLİ: BU DOSYA ASLA GITHUB'A YÜKLENMEMELİDİR.
 .streamlit/secrets.toml
 
-# Çevre değişkenleri dosyası
+# Çevre değişkenleri dosyaları (genellikle API anahtarları içerir)
 .env
+.flaskenv
 
+# --- İşletim Sistemi ve IDE Tarafından Oluşturulan Geçici Dosyalar ---
 # macOS geçici dosyaları
 .DS_Store
 
-# Python derleme ve cache dosyaları
-__pycache__/
-*.pyc
-*.py[cod]
+# JetBrains (IntelliJ IDEA, PyCharm) IDE dosyaları
+.idea/
+# (Not: Eğer .idea klasörünü tamamen ignore etmek istemezseniz,
+# .idea/workspace.xml, .idea/tasks.xml gibi belirli dosyaları ignore edebilirsiniz.)
+# Örneğin:
+# .idea/*.iml
+# .idea/workspace.xml
+# .idea/misc.xml
+# .idea/modules.xml
+# .idea/navEditor.xml
+# .idea/restServices.xml
+# .idea/sonarlint/
+# .idea/sqlDataSources.xml
+# .idea/vcs.xml
+# .idea/libraries/
 
-# Jupyter/Colab tarafından oluşturulan geçici dosyalar
-.ipynb_checkpoints/
+# Visual Studio Code IDE dosyaları
+.vscode/
 
-# Diğer geçici dosyalar ve derleme çıktıları
-build/
-dist/
-*.egg-info/
-.coverage
-htmlcov/
+# --- Python Derleme ve Cache Dosyaları ---
+__pycache__/          # Python derleme cache klasörü
+*.pyc                 # Byte-compiled Python dosyaları
+*.pyo                 # Optimize edilmiş byte-compiled Python dosyaları
+*.pyd                 # Python DLL dosyaları
+*.egg                 # Dağıtım yumurtası dosyaları
+*.egg-info/           # Dağıtım yumurtası bilgi klasörleri
+*.so                  # C uzantısı derlemeleri
+*$py.class            # Jython tarafından oluşturulan dosyalar
+
+# --- Bağımlılık ve Paketleme ---
+build/                # Derleme çıktıları
+dist/                 # Dağıtım paketleri
+develop-eggs/
+.eggs/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+MANIFEST
+*.manifest
+*.spec
+
+# --- Test ve Kapsam Raporları ---
+htmlcov/              # HTML kapsama raporları
+.tox/                 # Tox test ortamları
+.nox/                 # Nox test ortamları
+.coverage             # Kapsam raporu veritabanı
+.coverage.*
+.cache/               # Pytest cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
 .pytest_cache/
+cover/
+
+# --- Jupyter Notebook ve IPython ---
+.ipynb_checkpoints/   # Jupyter Notebook kontrol noktaları
+profile_default/
+ipython_config.py
+
+# --- Django ---
+*.log                 # Log dosyaları
+local_settings.py     # Yerel ayarlar (genellikle hassas bilgiler içerir)
+db.sqlite3            # SQLite veritabanı dosyası
+db.sqlite3-journal    # SQLite journal dosyası
+
+# --- Flask ---
+instance/             # Flask instance klasörü
+.webassets-cache/
+
+# --- Scrapy ---
+.scrapy/
+
+# --- Sphinx Dokümantasyon ---
+docs/_build/
+
+# --- Diğer Ortam Yönetimi Araçları ---
+# pyenv
+# .python-version # Eğer pyenv kullanıyorsanız ve versiyonu ignore etmek isterseniz
+
+# pipenv
+# Pipfile.lock # Genellikle sürüm kontrolüne dahil edilir, ancak bazı durumlarda dışlanabilir.
+
+# poetry
+# poetry.lock # Genellikle sürüm kontrolüne dahil edilir, ancak bazı durumlarda dışlanabilir.
+
+# pdm
+# pdm.lock # Genellikle sürüm kontrolüne dahil edilir.
+.pdm.toml
+.pdm-python/
+.pdm-build/
+
+# PEP 582; pyflow ve pdm tarafından kullanılır
+__pypackages__/
+
+# --- Celery ---
+celerybeat-schedule
+celerybeat.pid
+
+# --- SageMath ---
+*.sage.py
+
+# --- Spyder ---
+.spyderproject
+.spyproject
+
+# --- Rope ---
+.ropeproject
+
+# --- mkdocs ---
+/site
+
+# --- Mypy ---
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# --- Pyre ---
+.pyre/
+
+# --- Pytype ---
+.pytype/
+
+# --- Cython ---
+cython_debug/
+
+# --- Abstra (AI-powered process automation framework) ---
+.abstra/
+
+# --- Ruff (Python linter/formatter cache) ---
+.ruff_cache/
+
+# --- PyPI configuration file ---
+.pypirc
+
+# --- Cursor (AI-powered code editor) ---
+.cursorignore
+.cursorindexingignore
