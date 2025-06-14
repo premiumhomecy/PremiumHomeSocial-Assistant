@@ -1,30 +1,33 @@
 import streamlit as st
 import os
-import google.generativeai as genai
-from PIL import Image
-import requests
-from io import BytesIO
+import requests # Backend iletişimleri ve görsel indirme için
+import json
 import base64
-from openai import OpenAI # DALL-E için
-from dotenv import load_dotenv # .env dosyasını yüklemek için
+from PIL import Image
+from io import BytesIO
 
-# .env dosyasını yükle (yerel çalıştırmalar için)
-load_dotenv()
+# AI API'leri için doğrudan import'lar
+import google.generativeai as genai
+from openai import OpenAI
+from dotenv import load_dotenv # .env dosyasını yüklemek için (yerel için)
 
 # --- API Anahtarlarını Yapılandırma ---
-# Streamlit Cloud'da 'Secrets' kullanarak veya yerel ortam değişkenleri
+# Streamlit Cloud'da 'Secrets' kullanarak veya yerel ortam değişkenleri (.env ile)
 # Önemli: Bu anahtarları doğrudan GitHub'a YÜKLEMEYİN!
 try:
+    # Yerel çalıştırmalar için .env dosyasını yükle
+    load_dotenv() 
+
     # Ortam değişkenlerinden oku (hem yerel .env hem de sistem ortam değişkenleri)
     GEMINI_API_KEY = os.environ.get("GOOGLE_API_KEY")
     OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
     
     # Eğer Streamlit Cloud'da çalışıyorsak ve ortam değişkenleri ayarlı değilse st.secrets'ı dene
-    # st.secrets'a erişmek için uygulama Streamlit Cloud'da olmalı
     if not GEMINI_API_KEY and "GOOGLE_API_KEY" in st.secrets:
         GEMINI_API_KEY = st.secrets["GOOGLE_API_KEY"]
     if not OPENAI_API_KEY and "OPENAI_API_KEY" in st.secrets:
         OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+
 
     if not GEMINI_API_KEY:
         st.error("Gemini API anahtarı bulunamadı. Lütfen 'GOOGLE_API_KEY' ortam değişkenini veya Streamlit Secrets'ı ayarlayın.")
@@ -34,25 +37,26 @@ try:
         st.error("OpenAI API anahtarı bulunamadı. Lütfen 'OPENAI_API_KEY' ortam değişkenini veya Streamlit Secrets'ı ayarlayın.")
         st.stop() # Anahtar yoksa uygulamayı durdur
         
+    # AI kütüphanelerini yapılandır
     genai.configure(api_key=GEMINI_API_KEY)
-    # st.success("API anahtarları yapılandırıldı (Ortam Değişkenleri/Streamlit Secrets).") # Bu mesaj arayüzde görünür
-    
-    # OpenAI istemcisini başlat
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
     
 except Exception as e:
     st.error(f"API anahtarları yapılandırılamadı: {e}. Lütfen anahtarlarınızı kontrol edin.")
     st.stop() # Hata durumunda uygulamayı durdur
 
+# --- Backend API URL'si ---
+# Render.com'daki canlı backend URL'nizi buraya yapıştırın.
+# Yerel test için: "http://localhost:5000"
+BACKEND_API_URL = "https://premium-home-social-api.onrender.com" # BURAYA KENDİ RENDER URL'NİZİ YAPIŞTIRIN!
 
-# --- AI Metin Üretme Fonksiyonu (Gemini Flash) ---
+# --- AI Metin Üretme Fonksiyonu (Gemini Flash) - DOĞRUDAN AI ÇAĞRISI ---
 @st.cache_data # Bu dekoratör fonksiyon çıktısını önbelleğe alır
 def generate_text_gemini_flash(prompt_text, target_language="Türkçe"):
     model = genai.GenerativeModel('gemini-2.0-flash')
     localized_prompt = f"{prompt_text} Lütfen çıktıyı {target_language} dilinde oluştur."
     try:
         response = model.generate_content(localized_prompt)
-        # Yanıt boşsa veya beklenen formatta değilse kontrol et
         if response and response.text:
             return response.text
         else:
@@ -62,11 +66,11 @@ def generate_text_gemini_flash(prompt_text, target_language="Türkçe"):
         if "quota" in error_msg.lower() or "429" in error_msg or "TooManyRequests" in error_msg:
             return f"Hata: Kota aşımı! Lütfen daha sonra tekrar deneyin veya kota durumunuzu kontrol edin. Detay: {e}"
         elif "api key not valid" in error_msg.lower() or "authentication error" in error_msg.lower():
-            return "Hata: API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
+            return "Hata: Gemini API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
         else:
             return f"Hata: API Hatası: {e}"
 
-# --- AI Görsel Yorumlama Fonksiyonu (Gemini Vision) ---
+# --- AI Görsel Yorumlama Fonksiyonu (Gemini Vision) - DOĞRUDAN AI ÇAĞRISI ---
 @st.cache_data
 def interpret_image_gemini_vision(pil_image_object, prompt_text="Bu resimde ne görüyorsun?"):
     model = genai.GenerativeModel('gemini-1.5-flash')
@@ -82,13 +86,13 @@ def interpret_image_gemini_vision(pil_image_object, prompt_text="Bu resimde ne g
         if "quota" in error_msg.lower() or "429" in error_msg or "TooManyRequests" in error_msg:
             return f"Hata: Görsel yorumlama kota aşımı! Lütfen daha sonra tekrar deneyin. Detay: {e}"
         elif "api key not valid" in error_msg.lower() or "authentication error" in error_msg.lower():
-            return "Hata: API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
+            return "Hata: Gemini API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
         else:
             return f"Hata: Görsel yorumlama hatası: {e}"
 
-# --- AI Görsel Oluşturma Fonksiyonu (DALL-E 3) ---
-# Bu fonksiyon dış API çağrısı yaptığı için st.cache_data dikkatli kullanılmalı, her çağrıda yeni görsel istiyorsak kaldırılabilir.
+# --- AI Görsel Oluşturma Fonksiyonu (DALL-E 3) - DOĞRUDAN AI ÇAĞRISI ---
 def generate_image_dalle(image_prompt_text):
+    global openai_client # OpenAI istemcisi global değişken olarak tanımlı
     if not openai_client:
         return "Hata: OpenAI istemcisi başlatılamadı."
     try:
@@ -113,7 +117,7 @@ def generate_image_dalle(image_prompt_text):
         else:
             return f"Hata: Görsel oluşturma hatası: {e}"
 
-# --- AI ile Metin Formatlama Fonksiyonu ---
+# --- AI ile Metin Formatlama Fonksiyonu (Gemini Flash) - DOĞRUDAN AI ÇAĞRISI ---
 @st.cache_data
 def format_text_for_social_media(text, platform, target_language="Türkçe"):
     model = genai.GenerativeModel('gemini-2.0-flash')
@@ -145,7 +149,7 @@ def format_text_for_social_media(text, platform, target_language="Türkçe"):
     elif platform == "Genel Blog Yazısı":
         format_prompt = (
             f"Aşağıdaki metni bir blog yazısı formatına dönüştür. Blogun ana başlığını, alt başlıklarını ve paragraflarını açıkça belirt. "
-            f"Okunabililiği artırmak için giriş, gelişme (alt başlıklar kullanarak) ve sonuç bölümleri oluştur. "
+            f"Okunabilirliği artırmak için giriş, gelişme (alt başlıklar kullanarak) ve sonuç bölümleri oluştur. "
             f"Anahtar kelimelerle zenginleştirilmiş, bilgilendirici ve SEO dostu bir yapı kur. "
             f"Metal evler, prefabrik ve tiny house kültürüne ilgi duyan Avrupa'daki okuyucular için kapsamlı ve akıcı bir anlatım sağla. "
             f"Çıktıyı {target_language} dilinde ver. Metin: \n\n{text}"
@@ -171,12 +175,12 @@ def format_text_for_social_media(text, platform, target_language="Türkçe"):
     except Exception as e:
         error_msg = str(e)
         if "api key not valid" in error_msg.lower() or "authentication error" in error_msg.lower():
-            return "Hata: API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
+            return "Hata: Gemini API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
         return f"Hata: Metin formatlama hatası (AI): {e}"
 
-# --- YouTube Video Fikri Oluşturma Fonksiyonu ---
+# --- YouTube Video Fikri Oluşturma Fonksiyonu (Gemini Flash) - DOĞRUDAN AI ÇAĞRISI ---
 @st.cache_data
-def generate_youtube_idea(prompt_text, target_language="Türkçe"):
+def generate_youtube_idea_gemini(prompt_text, target_language="Türkçe"):
     model = genai.GenerativeModel('gemini-2.0-flash')
     youtube_prompt = (
         f"'{prompt_text}' konusunda bir YouTube videosu fikri oluştur. "
@@ -189,7 +193,7 @@ def generate_youtube_idea(prompt_text, target_language="Türkçe"):
     except Exception as e:
         error_msg = str(e)
         if "api key not valid" in error_msg.lower() or "authentication error" in error_msg.lower():
-            return "Hata: API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
+            return "Hata: Gemini API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
         return f"Hata: YouTube video fikri oluşturma hatası (AI): {e}"
 
 # --- Placeholder for AI Short Video Generation ---
@@ -199,16 +203,30 @@ def generate_short_video_placeholder(video_prompt_text, target_language="Türkç
             f"**RunwayML API**, **Pictory.ai API** veya **Synthesys.io API** gibi platformların API'leri gereklidir. "
             f"Bu işlem maliyetli olabilir ve uzun sürebilir.")
 
-# --- Placeholder for Social Media Statistics ---
-def fetch_social_media_stats_placeholder():
-    return ("Sosyal Medya İstatistikleri (Geliştirme Aşamasında):\n\n"
-            "Bu bölüm, API entegrasyonları tamamlandığında tüm sosyal medya hesaplarınızdaki (Facebook, Instagram, LinkedIn, YouTube) "
-            "toplam takipçi, etkileşim, izlenme gibi anahtar metrikleri görselleştirecektir. "
-            "Bu verilere erişim için her platformdan özel izinler ve kimlik doğrulama gereklidir.")
+# --- Frontend Yardımcı Fonksiyonları (Backend ile İletişim Kurar) ---
+def call_backend_api(endpoint, method="GET", payload=None):
+    """Genel backend API çağrı fonksiyonu."""
+    url = f"{BACKEND_API_URL}{endpoint}"
+    try:
+        if method == "POST":
+            response = requests.post(url, json=payload)
+        else: # GET
+            response = requests.get(url)
+        response.raise_for_status() # HTTP hata kodları için istisna fırlatır
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"Backend API'ye bağlanırken hata oluştu: {e}")
+        return {"error": f"API Bağlantı Hatası: {e}"}
+    except json.JSONDecodeError as e:
+        st.error(f"Backend'den geçersiz JSON yanıtı alındı: {e}. Yanıt: {response.text}")
+        return {"error": f"JSON Çözümleme Hatası: {e}"}
 
+def get_social_stats_from_backend():
+    endpoint = "/api/social_stats" # Backend'deki mevcut endpoint
+    return call_backend_api(endpoint, method="GET")
 
 # --- Streamlit Uygulama Arayüzü ---
-st.set_page_config(layout="wide") # Geniş sayfa düzeni
+st.set_page_config(layout="wide")
 st.title("Premium Home AI Sosyal Medya Asistanı 🚀")
 
 st.markdown("""
@@ -216,6 +234,26 @@ st.markdown("""
     Metal evler, prefabrik yapılar ve Tiny House kültürü odaklı içerikler üretir.
     ---
 """)
+
+# --- Sosyal Medya Yetkilendirme Bölümü ---
+st.header("Sosyal Medya Hesaplarını Yetkilendir")
+st.markdown("""
+    İstatistikleri çekebilmek ve diğer sosyal medya özelliklerini kullanabilmek için hesaplarınızı bağlamalısınız.
+    Bu işlem sizi backend servisimize yönlendirecektir.
+""")
+
+col_auth1, col_auth2 = st.columns(2)
+with col_auth1:
+    if st.button("Facebook/Instagram'ı Yetkilendir", type="primary", key="auth_facebook_button"):
+        st.markdown(f"[Facebook/Instagram Yetkilendirme Başlat]({BACKEND_API_URL}/auth/facebook)", unsafe_allow_html=True)
+        st.info("Yukarıdaki linke tıklayın ve Facebook yetkilendirmesini tamamlayın. Ardından bu uygulamaya geri dönün.")
+
+with col_auth2:
+    if st.button("Google/YouTube'u Yetkilendir", type="primary", key="auth_google_button"):
+        st.markdown(f"[Google/YouTube Yetkilendirme Başlat]({BACKEND_API_URL}/auth/google)", unsafe_allow_html=True)
+        st.info("Yukarıdaki linke tıklayın ve Google yetkilendirmesini tamamlayın. Ardından bu uygulamaya geri dönün.")
+
+st.markdown("---")
 
 # --- Metin Oluşturucu Bölümü ---
 st.header("Metin Oluştur")
@@ -233,11 +271,11 @@ with col1:
 with col2:
     if st.button('Metin Oluştur', type="primary", key='generate_text_button'):
         with st.spinner(f"'{selected_language}' dilinde içerik oluşturuluyor..."):
-            generated_content = generate_text_gemini_flash(prompt_text, selected_language)
-        st.session_state.last_generated_text = generated_content # Metni session state'e kaydet
+            generated_content = generate_text_gemini_flash(prompt_text, selected_language) # Doğrudan çağrı
+        st.session_state.last_generated_text = generated_content
         st.session_state.last_selected_language = selected_language
         st.markdown("### Oluşturulan Metin:")
-        st.code(generated_content, language='markdown') # Metni kod bloğu olarak göster
+        st.code(generated_content, language='markdown')
 
 # --- Sosyal Medya Metnini Formatla ve Paylaş Bölümü ---
 st.header("Sosyal Medya Metnini Formatla ve Paylaş")
@@ -251,9 +289,9 @@ if 'last_generated_text' in st.session_state and st.session_state.last_generated
     with col4:
         if st.button('Formatla ve Paylaş (AI)', type="secondary", key='format_share_button'):
             with st.spinner(f"Metin '{selected_platform}' için formatlanıyor..."):
-                formatted_text = format_text_for_social_media(st.session_state.last_generated_text, selected_platform, st.session_state.last_selected_language)
+                formatted_text = format_text_for_social_media(st.session_state.last_generated_text, selected_platform, st.session_state.last_selected_language) # Doğrudan çağrı
             st.markdown("### Oluşturulan Metin:")
-            st.code(formatted_text, language='markdown') # Metni kod bloğu olarak göster
+            st.code(formatted_text, language='markdown')
 
             # Sosyal Medya Paylaşım Linkleri
             encoded_formatted_text_share = requests.utils.quote(formatted_text)
@@ -268,7 +306,7 @@ if 'last_generated_text' in st.session_state and st.session_state.last_generated
                 <a href="{linkedin_share_url}" target='_blank' class='social-button linkedin'>LinkedIn'de Paylaş</a>
                 <a href="{instagram_placeholder_url}" target='_blank' class='social-button instagram'>Instagram'da Paylaş</a>
                 <a href="{facebook_share_url}" target='_blank' class='social-button facebook'>Facebook'ta Paylaş</a>
-                <p style="font-size:12px; color:#666; margin-top:10px;"><i>Not: Instagram ve LinkedIn işletme sayfası paylaşımları için API entegrasyonu gereklidir. Bu butonlar manuel paylaşıma yönlendirir.</i></p>
+                <p style="font-size:12px; color:#666; margin-top:10px;"><i>Not: Bu butonlar manuel paylaşıma yönlendirir, API entegrasyonu backend'de yapılır.</i></p>
             </div>
             """, unsafe_allow_html=True)
 else:
@@ -276,7 +314,7 @@ else:
 
 # --- Görsel Yükle ve Yorumla Bölümü ---
 st.header("Görsel Yükle ve Yorumla")
-uploaded_file = st.file_uploader("Yorumlamak için bir görsel yükleyin", type=['png', 'jpg', 'jpeg'])
+uploaded_file = st.file_uploader("Yorumlamak için bir görsel yükleyin", type=['png', 'jpg', 'jpeg'], key="image_uploader")
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
@@ -284,7 +322,11 @@ if uploaded_file is not None:
     
     if st.button('Görseli Yorumla', type="secondary", key='interpret_image_button'):
         with st.spinner("Görsel yorumlanıyor..."):
-            interpretation = interpret_image_gemini_vision(image)
+            # Görseli base64'e dönüştürerek direkt Gemini Vision'a gönder
+            buffered = BytesIO()
+            image.save(buffered, format="PNG")
+            img_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+            interpretation = interpret_image_gemini_vision(Image.open(BytesIO(base64.b64decode(img_b64)))) # Doğrudan çağrı
         st.markdown("### Görsel Yorumu:")
         st.code(interpretation, language='markdown')
 
@@ -307,12 +349,11 @@ if st.button('Görsel Oluştur', type="primary", key='generate_image_button'):
             st.stop()
     
     with st.spinner(f"Görsel oluşturuluyor: '{image_prompt[:50]}...'"):
-        generated_image_b64 = generate_image_dalle(image_prompt)
+        generated_image_b64 = generate_image_dalle(image_prompt) # Doğrudan çağrı
 
     if generated_image_b64 and not "Hata:" in generated_image_b64:
         st.markdown("### Oluşturulan Görsel:")
         st.image(base64.b64decode(generated_image_b64), caption='Oluşturulan Görsel', use_column_width=True)
-        # İndirme butonu
         st.download_button(
             label="Görseli İndir",
             data=base64.b64decode(generated_image_b64),
@@ -343,13 +384,12 @@ with col5:
                 st.stop()
         
         with st.spinner(f"YouTube video fikri oluşturuluyor: '{youtube_prompt[:50]}...'"):
-            youtube_idea = generate_youtube_idea(youtube_prompt, "Türkçe")
+            youtube_idea = generate_youtube_idea_gemini(youtube_prompt, "Türkçe") # Doğrudan çağrı
         st.session_state.last_youtube_idea = youtube_idea
         st.markdown("### Oluşturulan YouTube Video Fikri:")
         st.code(youtube_idea, language='markdown')
     
 with col6:
-    # "YouTube Fikrini Video İçin Kullan" butonu
     if st.button('YouTube Fikrini Video İçin Kullan', type="secondary", key='use_for_video_creation_button'):
         if 'last_youtube_idea' in st.session_state and st.session_state.last_youtube_idea:
             st.session_state.video_creation_prompt_input_value = st.session_state.last_youtube_idea
@@ -363,13 +403,13 @@ st.markdown("<p style='font-size:13px; color:#555;'>*Yukarıdaki 'YouTube Video 
 
 video_creation_prompt_input = st.text_area(
     'Video Oluşturma İstem:',
-    value=st.session_state.get('video_creation_prompt_input_value', ''), # Otomatik doldurma için
+    value=st.session_state.get('video_creation_prompt_input_value', ''),
     placeholder='Video oluşturma istemi giriniz (Örn: Bir Tiny House\'un 15 saniyelik tanıtım videosu).',
     height=150,
     key='video_creation_prompt_input'
 )
 
-if st.button('Video Oluştur (API Gerekli)', type="secondary", key='generate_short_video_button'): # type="danger" -> "secondary"
+if st.button('Video Oluştur (API Gerekli)', type="secondary", key='generate_short_video_button'):
     if not video_creation_prompt_input.strip():
         st.error("Lütfen video oluşturmak için bir istem girin veya YouTube fikri oluşturun.")
         st.stop()
@@ -379,15 +419,57 @@ if st.button('Video Oluştur (API Gerekli)', type="secondary", key='generate_sho
     st.markdown("### Oluşturulan Video (Placeholder):")
     st.code(generated_video_info, language='markdown')
 
-# --- Sosyal Medya İstatistikleri (Placeholder) Bölümü ---
-st.header("Sosyal Medya İstatistikleri (Geliştirme Aşamasında)")
-st.markdown("<p style='font-size:13px; color:#555;'>*API entegrasyonları tamamlandığında sosyal medya istatistikleriniz burada gösterilecektir.</p>", unsafe_allow_html=True)
+# --- Sosyal Medya İstatistikleri Bölümü ---
+st.header("Sosyal Medya İstatistikleri")
+st.markdown("<p style='font-size:13px; color:#555;'>*Hesaplarınızı yetkilendirdikten sonra buradan istatistikleri çekebilirsiniz.</p>", unsafe_allow_html=True)
 
-if st.button('İstatistikleri Çek (API Gerekli)', type="secondary", key='fetch_stats_button'): # type="danger" -> "secondary"
-    with st.spinner("İstatistikler çekiliyor... (API entegrasyonu gerekli)"):
-        stats_text = fetch_social_media_stats_placeholder()
+if st.button('İstatistikleri Çek', type="primary", key='fetch_stats_button'):
+    with st.spinner("İstatistikler çekiliyor..."):
+        stats_data = get_social_stats_from_backend() # Backend çağrısı
+    
     st.markdown("### Toplam Sosyal Medya İstatistikleri:")
-    st.code(stats_text, language='markdown')
+    if stats_data and not stats_data.get("error"):
+        # Facebook/Instagram Stats
+        fb_ig_stats = stats_data.get("facebook_instagram_stats", {})
+        if fb_ig_stats.get("status") == "Facebook yetkilendirmesi yapılmadı.":
+            st.warning("Facebook/Instagram yetkilendirmesi yapılmadığı için istatistikler çekilemedi.")
+        elif fb_ig_stats.get("error"):
+            st.error(f"Facebook/Instagram istatistik çekme hatası: {fb_ig_stats['error']}")
+        else:
+            st.subheader("Facebook/Instagram İstatistikleri:")
+            fb_page = fb_ig_stats.get("facebook_page", {})
+            if fb_page:
+                st.write(f"- **Sayfa Adı:** {fb_page.get('page_name', 'Bilinmiyor')}")
+                st.write(f"- **Sayfa Beğenileri:** {fb_page.get('page_likes', 'Yok')}")
+                st.write(f"- **Sayfa Takipçileri:** {fb_page.get('page_followers', 'Yok')}")
+            
+            ig_profile = fb_ig_stats.get("instagram_profile", {})
+            if ig_profile:
+                st.write(f"- **Instagram Kullanıcı Adı:** {ig_profile.get('username', 'Bilinmiyor')}")
+                st.write(f"- **Instagram Takipçileri:** {ig_profile.get('followers_count', 'Yok')}")
+                st.write(f"- **Instagram Medya Sayısı:** {ig_profile.get('media_count', 'Yok')}")
+            else:
+                st.warning("Instagram İşletme Hesabı bulunamadı veya bağlı değil. Lütfen Facebook Sayfanızın bir Instagram İşletme Hesabına bağlı olduğundan emin olun.")
+
+
+        # YouTube Stats
+        yt_stats = stats_data.get("youtube_stats", {})
+        if yt_stats.get("status") == "Google yetkilendirmesi yapılmadı.":
+            st.warning("Google/YouTube yetkilendirmesi yapılmadığı için istatistikler çekilemedi.")
+        elif yt_stats.get("error"):
+            st.error(f"YouTube istatistik çekme hatası: {yt_stats['error']}")
+        else:
+            st.subheader("YouTube İstatistikleri:")
+            yt_channel = yt_stats.get("channel", {})
+            if yt_channel:
+                st.write(f"- **Kanal Adı:** {yt_channel.get('channel_name', 'Bilinmiyor')}")
+                st.write(f"- **Abone Sayısı:** {yt_channel.get('subscriber_count', 'Yok')}")
+                st.write(f"- **Görüntülenme Sayısı:** {yt_channel.get('view_count', 'Yok')}")
+                st.write(f"- **Video Sayısı:** {yt_channel.get('video_count', 'Yok')}")
+            else:
+                st.warning("Yetkilendirilmiş Google hesabına bağlı bir YouTube kanalı bulunamadı.")
+    else:
+        st.error(f"İstatistikler çekilirken genel bir hata oluştu: {stats_data.get('error', 'Bilinmeyen hata.')}")
 
 st.markdown("---")
 st.markdown("Developed with ❤️ by Premium Home AI Assistant")
