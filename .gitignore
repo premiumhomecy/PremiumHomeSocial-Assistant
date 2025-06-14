@@ -1,0 +1,27 @@
+# Python sanal ortamı
+venv/
+
+# Streamlit secrets (API anahtarları vb.)
+.streamlit/secrets.toml
+
+# Çevre değişkenleri dosyası
+.env
+
+# macOS geçici dosyaları
+.DS_Store
+
+# Python derleme ve cache dosyaları
+__pycache__/
+*.pyc
+*.py[cod]
+
+# Jupyter/Colab tarafından oluşturulan geçici dosyalar
+.ipynb_checkpoints/
+
+# Diğer geçici dosyalar ve derleme çıktıları
+build/
+dist/
+*.egg-info/
+.coverage
+htmlcov/
+.pytest_cache/
