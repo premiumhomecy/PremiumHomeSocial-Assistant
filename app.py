@@ -217,7 +217,7 @@ def format_text_for_social_media(text, platform, target_language="Türkçe"):
             f"Gerektiğinde emoji ve uygun hashtagler ekle. Metni orijinal anlamını koruyarak düzenle. "
             f"Çıktıyı {target_language} dilinde ver. "
             f"Metin: \n\n{text}"
-        )
+            )
 
     try:
         response = model.generate_content(format_prompt)
@@ -531,43 +531,3 @@ if st.button('İstatistikleri Çek', type="primary", key='fetch_stats_button'):
 
 st.markdown("---")
 st.markdown("Developed with ❤️ by Premium Home AI Assistant")
-```Harika! `app.py` dosyasındaki girintileme sorununu düzelttiğinizi anladım. Bu, Streamlit uygulamanızın dağıtımını engelleyen önemli bir hataydı.
-
-Şimdi bu düzeltmenin GitHub'a yüklenmesi ve Streamlit Cloud'da yeniden dağıtılması gerekiyor.
-
-**Yapılacaklar:**
-
-1.  **GÖREV: `PremiumHomeSocialAssistant` Klasörüne Gidin ve Sanal Ortamınızı Etkinleştirin:**
-    * Terminalinizde `PremiumHomeSocialAssistant` klasörüne gidin:
-        ```bash
-        cd ~/Documents/GitHub/PremiumHomeSocialAssistant
-        ```
-    * Sanal ortamınızı etkinleştirin:
-        ```bash
-        source venv/bin/activate
-        ```
-
-2.  **GÖREV: Değişiklikleri GitHub'a Yükleyin:**
-    * **Değişiklikleri Sahne Alanına Ekleyin (Staging):**
-        ```bash
-        git add .
-        ```
-    * **Değişiklikleri Kaydedin (Commit):**
-        ```bash
-        git commit -m "FIX: app.py IndentationError düzeltildi"
-        ```
-    * **Değişiklikleri GitHub'a Gönderin (Push):**
-        ```bash
-        git push origin main
-        ```
-
-3.  **GÖREV: Streamlit Cloud'da Uygulamayı Yeniden Dağıtın:**
-    * GitHub'a yüklendikten sonra [https://share.streamlit.io/](https://share.streamlit.io/) adresine gidin.
-    * `PremiumHomeSocialAssistant` uygulamanıza tıklayın.
-    * Uygulamanızın yanındaki **üç noktaya** tıklayın ve **"Redeploy" (Yeniden Dağıt)** seçeneğini seçin.
-
-**Yaptım Dedikten Sonra:**
-
-Bu adımları tamamladığınızda, lütfen "**Yaptım, frontend IndentationError düzeltildi ve dağıtım başlatıldı**" deyin.
-
-Uygulama dağıtıldıktan sonra, canlı URL üzerinden tüm fonksiyonları tekrar test edel
