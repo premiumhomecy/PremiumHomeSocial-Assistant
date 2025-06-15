@@ -47,15 +47,18 @@ except Exception as e:
 
 # --- Şirket Bilgileri (AI'ya sürekli anımsatılacak) ---
 COMPANY_INFO_CONTEXT = """
-Şirket Adı: SOYKOK PREMIUM HOME LTD (Premium Home)
-Ana Faaliyet Alanları: Metal evler, prefabrik yapılar, Tiny House üretimi ve inşaatı, nanoteknoloji zemin ısıtma sistemleri.
-Misyon: Yenilikçi, sürdürülebilir, modern ve uygun fiyatlı yaşam/çalışma alanları sunmak. Anahtar teslim çözümler.
+Şirket Adı: Premium Home
+Ana Faaliyet Alanları: Metal evler, prefabrik yapılar, Tiny House üretimi ve inşaatı, nanoteknoloji zemin ısıtma sistemleri. Anahtar teslim çözümler sunar.
+Misyon: Yenilikçi, sürdürülebilir, modern ve uygun fiyatlı yaşam/çalışma alanları sunmak.
+Hedef Kitle: Metal ev ve prefabrik yapılarla ilgilenen, Tiny House kültürünü benimsemek isteyen, Avrupa bölgelerinde bulunan kişiler ve profesyoneller.
+"""
+
+COMPANY_SOCIAL_PRESENCE_CONTEXT = """
 Web Sitesi: https://www.premiumpluscy.eu
 Katalog Sitesi: https://linktr.ee/premiumplushome
 Instagram Hesabı: https://www.instagram.com/premiumplushome
-Facebook Sayfası: https://www.facebook.com/PremiumPlusHomeCyprus (Varsayımsal URL, lütfen güncelleyin!)
-LinkedIn Sayfası: https://www.linkedin.com/company/premium-home-ltd (Varsayımsal URL, lütfen güncelleyin!)
-Hedef Kitle: Metal ev ve prefabrik yapılarla ilgilenen, Tiny House kültürünü benimsemek isteyen, Avrupa bölgelerinde bulunan kişiler ve profesyoneller.
+Facebook Sayfası: https://www.facebook.com/PremiumPlusHomeCyprus
+LinkedIn Sayfası: https://www.linkedin.com/company/premium-home-ltd
 """
 
 # --- Backend API URL'si ---
@@ -89,11 +92,11 @@ def generate_text_gemini_flash(prompt_text, target_language="Türkçe"):
             return f"Hata: API Hatası: {e}"
 
 # --- AI Görsel Yorumlama Fonksiyonu (Gemini Vision) ---
-@st.cache_data
+# UnhashableParamError hatasını gidermek için görseli doğrudan BytesIO nesnesine geçiriyoruz
+# ve st.cache_data için hash_funcs parametresini kullanıyoruz.
+@st.cache_data(hash_funcs={Image.Image: lambda _: None}) # PIL Image objesi için özel hash fonksiyonu
 def interpret_image_gemini_vision(pil_image_object, prompt_text="Bu resimde ne görüyorsun?"):
     model = genai.GenerativeModel('gemini-1.5-flash')
-    # Görsel yorumlama prompt'ına şirket bağlamını eklemeye gerek yok genellikle,
-    # doğrudan görseli yorumlamalıdır. Ancak istenirse eklenebilir.
     try:
         contents = [prompt_text, pil_image_object]
         response = model.generate_content(contents)
@@ -112,20 +115,20 @@ def interpret_image_gemini_vision(pil_image_object, prompt_text="Bu resimde ne g
 
 # --- AI Görsel Oluşturma Fonksiyonu (DALL-E 3) ---
 def generate_image_dalle(image_prompt_text):
-    global openai_client # OpenAI istemcisi global değişken olarak tanımlı
+    global openai_client
     if not openai_client:
         return "Hata: OpenAI istemcisi başlatılamadı."
-    # Görsel prompt'ına şirket bağlamını ekle (eğer prompt_text boşsa ve AI metininden geliyorsa zaten olacaktır)
-    # Direkt kullanıcıdan gelen prompt'lar için de şirket bağlamı ekleyebiliriz:
+    
+    # Görsel prompt'una şirket bağlamını ekle
     full_image_prompt = (
         f"{COMPANY_INFO_CONTEXT}\n\n"
         f"Yukarıdaki şirket bilgilerini ve faaliyet alanlarını göz önünde bulundurarak, şu görseli oluştur: "
-        f"'{image_prompt_text}'."
+        f"'{image_prompt_text}'. Lütfen modern, profesyonel ve yüksek çözünürlüklü bir stil kullan."
     )
     try:
         response = openai_client.images.generate(
             model="dall-e-3",
-            prompt=full_image_prompt, # Güncellenmiş prompt
+            prompt=full_image_prompt,
             n=1,
             size="1024x1024"
         )
@@ -150,38 +153,46 @@ def format_text_for_social_media(text, platform, target_language="Türkçe"):
     model = genai.GenerativeModel('gemini-2.0-flash')
     # Şirket bilgilerini ve sosyal medya hesaplarını prompt'a ekle
     # Doğrudan sosyal medya için hazır hale getirme isteğini vurgula
-    company_social_info_context = f"""
-    Şirket Adı: Premium Home
-    Web Sitesi: https://www.premiumpluscy.eu
-    Katalog Sitesi: https://linktr.ee/premiumplushome
-    Instagram: https://www.instagram.com/premiumplushome
-    Facebook: https://www.facebook.com/PremiumPlusHomeCyprus
-    LinkedIn: https://www.linkedin.com/company/premium-home-ltd
-    """
-
-    format_prompt_base = f"{COMPANY_INFO_CONTEXT}\n{company_social_info_context}\n\n"
+    format_prompt_base = f"{COMPANY_INFO_CONTEXT}\n{COMPANY_SOCIAL_PRESENCE_CONTEXT}\n\n"
 
     if platform == "Instagram":
         format_prompt = (
             f"{format_prompt_base}"
             f"Yukarıdaki şirket bilgilerini ve sosyal medya hesaplarını göz önünde bulundurarak, aşağıdaki metni görsel odaklı ve direkt paylaşılmaya hazır bir Instagram gönderisine dönüştür. "
-            f"Kısa paragraflar, emoji ve trend hashtagler kullan. Harekete geçirici (CTA) ifadeler ekle. "
+            f"Verilen örnekteki gibi kısa paragraflar, emoji ve trend hashtagler kullan. '📞 Contact Us' ve '🔗 Website' gibi net CTA'lar ekle. "
             f"Metni orijinal anlamını koruyarak, Instagram'ın karakter sınırlamalarına uygun ama bilgilendirici olacak şekilde {target_language} dilinde düzenle. "
-            f"Web sitesi ve katalog linklerini uygun yerlerde belirt. Metin: \n\n{text}"
+            f"Örnek İçerik Tarzı:\n"
+            f"🏡 Countryside 72m² – Modern, Modular, and Comfortable Living!\n\n"
+            f"Looking for a stylish, energy-efficient home?\n"
+            f"✅ Spacious Design: 3 bedrooms, 1 kitchen, 1 bathroom\n"
+            f"✅ Durability & Quality: Premium+ materials, insulated walls, and aluminum windows\n"
+            f"✅ Fast Installation: Average 8 weeks delivery time\n"
+            f"✅ Turnkey Price: Starting from €59,900 (excluding VAT)\n\n"
+            f"📞 Contact Us:\n"
+            f"📍 Address: Iasonos 1082, Nicosia, Cyprus\n"
+            f"🌐 Web: www.premiumpluscy.eu\n"
+            f"📩 Email: seller@premiumpluscy.eu\n"
+            f"📲 Phone: +357 97550946 | +357 22584081\n\n"
+            f"📩 Send us a DM or visit our website for more details!\n"
+            f"🔗 www.premiumpluscy.eu\n\n"
+            f"#ModularHome #PrefabHouse #EcoFriendlyLiving #SmartLiving #minimalisthome\n\n"
+            f"Metin: \n\n{text}"
         )
     elif platform == "Facebook":
         format_prompt = (
             f"{format_prompt_base}"
-            f"Yukarıdaki şirket bilgilerini ve sosyal medya hesaplarını göz önünde bulundurarak, aşağıdaki metni Facebook topluluğu için samimi, bilgilendirici ve paylaşılmaya hazır bir gönderiye dönüştür. "
+            f"Yukarıdaki şirket bilgilerini ve sosyal medya hesaplarını göz önünde bulundurarak, aşağıdaki metni Facebook topluluğu için samimi, bilgilendirici ve direkt paylaşılmaya hazır bir gönderiye dönüştür. "
             f"Paylaşımı teşvik eden sorular, topluluk odaklı ifadeler ve uygun hashtagler kullan. "
-            f"Metni video veya görsel içeriğe eşlik edebilecek, sohbeti başlatacak şekilde {target_language} dilinde yaz. Web sitesi ve katalog linklerini uygun yerlerde belirt. Metin: \n\n{text}"
+            f"Metni video veya görsel içeriğe eşlik edebilecek, sohbeti başlatacak şekilde {target_language} dilinde yaz. "
+            f"Şirket web sitesi ve katalog linklerini uygun yerlerde belirterek, kişisel hesap yerine işletme sayfası üzerinden paylaşılacak bir dil kullan. Metin: \n\n{text}"
         )
     elif platform == "LinkedIn":
         format_prompt = (
             f"{format_prompt_base}"
             f"Yukarıdaki şirket bilgilerini ve sosyal medya hesaplarını göz önünde bulundurarak, aşağıdaki metni LinkedIn profesyonel ağı için bilgilendirici, otoriter ve direkt paylaşılmaya hazır bir gönderiye dönüştür. "
             f"Sektörel içgörüler, profesyonel terimler ve konuyla ilgili hashtagler kullan. "
-            f"Değer katan bilgiler sun ve tartışmayı teşvik et. Web sitesi ve katalog linklerini uygun yerlerde belirt. Çıktıyı {target_language} dilinde ver. Metin: \n\n{text}"
+            f"Değer katan bilgiler sun ve tartışmayı teşvik et. "
+            f"Şirket web sitesi ve katalog linklerini uygun yerlerde belirterek, kurumsal bir dil kullan. Metin: \n\n{text}"
         )
     elif platform == "Genel Blog Yazısı":
         format_prompt = (
@@ -222,10 +233,11 @@ def generate_youtube_idea_gemini(prompt_text, target_language="Türkçe"):
     model = genai.GenerativeModel('gemini-2.0-flash')
     # Şirket bilgilerini prompt'a ekle
     full_prompt = (
-        f"{COMPANY_INFO_CONTEXT}\n\n"
+        f"{COMPANY_INFO_CONTEXT}\n{COMPANY_SOCIAL_PRESENCE_CONTEXT}\n\n" # Sosyal medya bilgileri de eklendi
         f"Yukarıdaki şirket bilgilerini ve faaliyet alanlarını göz önünde bulundurarak, "
         f"'{prompt_text}' konusunda bir YouTube videosu fikri oluştur. "
         f"Başlık önerileri, anahtar noktalar (video içeriği), kısa bir senaryo taslağı (giriş, gelişme, sonuç) ve potansiyel görsel/çekim fikirleri içermeli. "
+        f"Hazırlanan metin ve video fikri Premium Home'un web sitesi ve sosyal medya kanallarına uygun olmalıdır. " # Vurgu eklendi
         f"Çıktıyı {target_language} dilinde ver."
     )
     try:
@@ -274,6 +286,7 @@ def get_social_stats_from_backend():
 # --- Streamlit Uygulama Arayüzü ---
 st.set_page_config(layout="wide")
 st.title("Premium Home AI Sosyal Medya Asistanı 🚀")
+st.markdown(f"<p style='font-size:12px; color:#888; text-align: right;'>Sürüm: v3 Beta</p>", unsafe_allow_html=True) # Sürüm bilgisi
 
 st.markdown("""
     Bu asistan, Premium Home için sosyal medya içerikleri oluşturmanıza, görselleri yorumlamanıza ve yeni fikirler üretmenize yardımcı olur.
@@ -343,7 +356,7 @@ if 'last_generated_text' in st.session_state and st.session_state.last_generated
             website_url = "https://www.premiumpluscy.eu"
             linkedin_share_url = f"https://www.linkedin.com/feed/?shareActive=true&text={encoded_formatted_text_share}"
             facebook_share_url = f"https://www.facebook.com/sharer/sharer.php?quote={encoded_formatted_text_share}"
-            instagram_placeholder_url = "https://www.instagram.com/"
+            instagram_placeholder_url = "https://www.instagram.com/" # Instagram için doğrudan paylaşım URL'si olmadığı için placeholder
 
             st.markdown(f"""
             <div class="social-media-buttons-container">
@@ -363,14 +376,17 @@ uploaded_file = st.file_uploader("Yorumlamak için bir görsel yükleyin", type=
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
-    st.image(image, caption='Yüklenen Görsel', use_column_width=True)
+    # st.image'deki uyarıyı gidermek için use_column_width yerine use_container_width kullanıldı.
+    st.image(image, caption='Yüklenen Görsel', use_container_width=True) 
     
     if st.button('Görseli Yorumla', type="secondary", key='interpret_image_button'):
         with st.spinner("Görsel yorumlanıyor..."):
+            # Görseli base64'e dönüştürerek direkt Gemini Vision'a gönder
             buffered = BytesIO()
             image.save(buffered, format="PNG")
             img_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-            interpretation = interpret_image_gemini_vision(Image.open(BytesIO(base64.b64decode(img_b64))))
+            # interpret_image_gemini_vision fonksiyonuna doğrudan PIL Image objesini gönderiyoruz.
+            interpretation = interpret_image_gemini_vision(image)
         st.markdown("### Görsel Yorumu:")
         st.code(interpretation, language='markdown')
 
@@ -397,7 +413,7 @@ if st.button('Görsel Oluştur', type="primary", key='generate_image_button'):
 
     if generated_image_b64 and not "Hata:" in generated_image_b64:
         st.markdown("### Oluşturulan Görsel:")
-        st.image(base64.b64decode(generated_image_b64), caption='Oluşturulan Görsel', use_column_width=True)
+        st.image(base64.b64decode(generated_image_b64), caption='Oluşturulan Görsel', use_container_width=True) # use_column_width -> use_container_width
         st.download_button(
             label="Görseli İndir",
             data=base64.b64decode(generated_image_b64),
@@ -459,7 +475,7 @@ if st.button('Video Oluştur (API Gerekli)', type="secondary", key='generate_sho
         st.stop()
     
     with st.spinner(f"Video oluşturma isteği: '{video_creation_prompt_input[:50]}...'"):
-        generated_video_info = generate_video_from_backend(video_creation_prompt_input, "Türkçe")
+        generated_video_info = generate_video_from_backend(video_creation_prompt_input, "Türkçe") # Backend'e yönlendirildi
     st.markdown("### Oluşturulan Video Bilgisi:")
     st.code(generated_video_info, language='markdown')
 
