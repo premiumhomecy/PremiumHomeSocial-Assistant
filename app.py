@@ -45,18 +45,36 @@ except Exception as e:
     st.error(f"API anahtarları yapılandırılamadı: {e}. Lütfen anahtarlarınızı kontrol edin.")
     st.stop() # Hata durumunda uygulamayı durdur
 
+# --- Şirket Bilgileri (AI'ya sürekli anımsatılacak) ---
+COMPANY_INFO_CONTEXT = """
+Şirket Adı: SOYKOK PREMIUM HOME LTD (Premium Home)
+Ana Faaliyet Alanları: Metal evler, prefabrik yapılar, Tiny House üretimi ve inşaatı, nanoteknoloji zemin ısıtma sistemleri.
+Misyon: Yenilikçi, sürdürülebilir, modern ve uygun fiyatlı yaşam/çalışma alanları sunmak. Anahtar teslim çözümler.
+Web Sitesi: https://www.premiumpluscy.eu
+Katalog Sitesi: https://linktr.ee/premiumplushome
+Instagram Hesabı: https://www.instagram.com/premiumplushome
+Facebook Sayfası: https://www.facebook.com/PremiumPlusHomeCyprus (Varsayımsal URL, lütfen güncelleyin!)
+LinkedIn Sayfası: https://www.linkedin.com/company/premium-home-ltd (Varsayımsal URL, lütfen güncelleyin!)
+Hedef Kitle: Metal ev ve prefabrik yapılarla ilgilenen, Tiny House kültürünü benimsemek isteyen, Avrupa bölgelerinde bulunan kişiler ve profesyoneller.
+"""
+
 # --- Backend API URL'si ---
 # Render.com'daki canlı backend URL'nizi buraya yapıştırın.
 # Yerel test için: "http://localhost:5000"
 BACKEND_API_URL = "https://premium-home-social-api.onrender.com" # BURAYA KENDİ RENDER URL'NİZİ YAPIŞTIRIN!
 
-# --- AI Metin Üretme Fonksiyonu (Gemini Flash) - DOĞRUDAN AI ÇAĞRISI ---
+# --- AI Metin Üretme Fonksiyonu (Gemini Flash) ---
 @st.cache_data # Bu dekoratör fonksiyon çıktısını önbelleğe alır
 def generate_text_gemini_flash(prompt_text, target_language="Türkçe"):
     model = genai.GenerativeModel('gemini-2.0-flash')
-    localized_prompt = f"{prompt_text} Lütfen çıktıyı {target_language} dilinde oluştur."
+    # Şirket bilgilerini prompt'a ekle
+    full_prompt = (
+        f"{COMPANY_INFO_CONTEXT}\n\n"
+        f"Yukarıdaki şirket bilgilerini ve faaliyet alanlarını göz önünde bulundurarak, şu içerik isteğini tamamla: "
+        f"'{prompt_text}'. Lütfen çıktıyı {target_language} dilinde oluştur."
+    )
     try:
-        response = model.generate_content(localized_prompt)
+        response = model.generate_content(full_prompt)
         if response and response.text:
             return response.text
         else:
@@ -70,10 +88,12 @@ def generate_text_gemini_flash(prompt_text, target_language="Türkçe"):
         else:
             return f"Hata: API Hatası: {e}"
 
-# --- AI Görsel Yorumlama Fonksiyonu (Gemini Vision) - DOĞRUDAN AI ÇAĞRISI ---
+# --- AI Görsel Yorumlama Fonksiyonu (Gemini Vision) ---
 @st.cache_data
 def interpret_image_gemini_vision(pil_image_object, prompt_text="Bu resimde ne görüyorsun?"):
     model = genai.GenerativeModel('gemini-1.5-flash')
+    # Görsel yorumlama prompt'ına şirket bağlamını eklemeye gerek yok genellikle,
+    # doğrudan görseli yorumlamalıdır. Ancak istenirse eklenebilir.
     try:
         contents = [prompt_text, pil_image_object]
         response = model.generate_content(contents)
@@ -90,15 +110,22 @@ def interpret_image_gemini_vision(pil_image_object, prompt_text="Bu resimde ne g
         else:
             return f"Hata: Görsel yorumlama hatası: {e}"
 
-# --- AI Görsel Oluşturma Fonksiyonu (DALL-E 3) - DOĞRUDAN AI ÇAĞRISI ---
+# --- AI Görsel Oluşturma Fonksiyonu (DALL-E 3) ---
 def generate_image_dalle(image_prompt_text):
     global openai_client # OpenAI istemcisi global değişken olarak tanımlı
     if not openai_client:
         return "Hata: OpenAI istemcisi başlatılamadı."
+    # Görsel prompt'ına şirket bağlamını ekle (eğer prompt_text boşsa ve AI metininden geliyorsa zaten olacaktır)
+    # Direkt kullanıcıdan gelen prompt'lar için de şirket bağlamı ekleyebiliriz:
+    full_image_prompt = (
+        f"{COMPANY_INFO_CONTEXT}\n\n"
+        f"Yukarıdaki şirket bilgilerini ve faaliyet alanlarını göz önünde bulundurarak, şu görseli oluştur: "
+        f"'{image_prompt_text}'."
+    )
     try:
         response = openai_client.images.generate(
             model="dall-e-3",
-            prompt=image_prompt_text,
+            prompt=full_image_prompt, # Güncellenmiş prompt
             n=1,
             size="1024x1024"
         )
@@ -117,53 +144,64 @@ def generate_image_dalle(image_prompt_text):
         else:
             return f"Hata: Görsel oluşturma hatası: {e}"
 
-# --- AI ile Metin Formatlama Fonksiyonu (Gemini Flash) - DOĞRUDAN AI ÇAĞRISI ---
+# --- AI ile Metin Formatlama Fonksiyonu ---
 @st.cache_data
 def format_text_for_social_media(text, platform, target_language="Türkçe"):
     model = genai.GenerativeModel('gemini-2.0-flash')
-    format_prompt = ""
+    # Şirket bilgilerini ve sosyal medya hesaplarını prompt'a ekle
+    # Doğrudan sosyal medya için hazır hale getirme isteğini vurgula
+    company_social_info_context = f"""
+    Şirket Adı: Premium Home
+    Web Sitesi: https://www.premiumpluscy.eu
+    Katalog Sitesi: https://linktr.ee/premiumplushome
+    Instagram: https://www.instagram.com/premiumplushome
+    Facebook: https://www.facebook.com/PremiumPlusHomeCyprus
+    LinkedIn: https://www.linkedin.com/company/premium-home-ltd
+    """
+
+    format_prompt_base = f"{COMPANY_INFO_CONTEXT}\n{company_social_info_context}\n\n"
+
     if platform == "Instagram":
         format_prompt = (
-            f"Aşağıdaki metni görsel odaklı Instagram için ilgi çekici, kısa ve öz bir gönderi metnine dönüştür. "
-            f"Okunabililiği artırmak için kısa paragraflar, emoji ve trend hashtagler kullan. "
-            f"Metal evler, prefabrik ve tiny house kültürüne ilgi duyan Avrupa'daki kitleye hitap et. "
-            f"Harekete geçirici (CTA) ifadeler ekle. Metni orijinal anlamını koruyarak, Instagram'ın karakter sınırlamalarına uygun ama bilgilendirici olacak şekilde düzenle. "
-            f"Çıktıyı {target_language} dilinde ver. Metin: \n\n{text}"
+            f"{format_prompt_base}"
+            f"Yukarıdaki şirket bilgilerini ve sosyal medya hesaplarını göz önünde bulundurarak, aşağıdaki metni görsel odaklı ve direkt paylaşılmaya hazır bir Instagram gönderisine dönüştür. "
+            f"Kısa paragraflar, emoji ve trend hashtagler kullan. Harekete geçirici (CTA) ifadeler ekle. "
+            f"Metni orijinal anlamını koruyarak, Instagram'ın karakter sınırlamalarına uygun ama bilgilendirici olacak şekilde {target_language} dilinde düzenle. "
+            f"Web sitesi ve katalog linklerini uygun yerlerde belirt. Metin: \n\n{text}"
         )
     elif platform == "Facebook":
         format_prompt = (
-            f"Aşağıdaki metni Facebook topluluğu için samimi, bilgilendirici ve etkileşim odaklı bir gönderiye dönüştür. "
+            f"{format_prompt_base}"
+            f"Yukarıdaki şirket bilgilerini ve sosyal medya hesaplarını göz önünde bulundurarak, aşağıdaki metni Facebook topluluğu için samimi, bilgilendirici ve paylaşılmaya hazır bir gönderiye dönüştür. "
             f"Paylaşımı teşvik eden sorular, topluluk odaklı ifadeler ve uygun hashtagler kullan. "
-            f"Metal evler, prefabrik ve tiny house kültürüne ilgi duyan Avrupa'daki kitleye hitap et. "
-            f"Video veya görsel içeriğe eşlik edebilecek, paylaşılabilir ve sohbeti başlatacak bir metin yaz. "
-            f"Çıktıyı {target_language} dilinde ver. Metin: \n\n{text}"
+            f"Metni video veya görsel içeriğe eşlik edebilecek, sohbeti başlatacak şekilde {target_language} dilinde yaz. Web sitesi ve katalog linklerini uygun yerlerde belirt. Metin: \n\n{text}"
         )
     elif platform == "LinkedIn":
         format_prompt = (
-            f"Aşağıdaki metni LinkedIn profesyonel ağı için bilgilendirici, otoriter ve düşündürücü bir gönderiye dönüştür. "
+            f"{format_prompt_base}"
+            f"Yukarıdaki şirket bilgilerini ve sosyal medya hesaplarını göz önünde bulundurarak, aşağıdaki metni LinkedIn profesyonel ağı için bilgilendirici, otoriter ve direkt paylaşılmaya hazır bir gönderiye dönüştür. "
             f"Sektörel içgörüler, profesyonel terimler ve konuyla ilgili hashtagler kullan. "
-            f"Metal evler, prefabrik ve tiny house sektöründeki veya bu alana yatırım yapmayı düşünen Avrupa'daki profesyonellere hitap et. "
-            f"Değer katan bilgiler sun ve tartışmayı teşvik et. "
-            f"Çıktıyı {target_language} dilinde ver. Metin: \n\n{text}"
+            f"Değer katan bilgiler sun ve tartışmayı teşvik et. Web sitesi ve katalog linklerini uygun yerlerde belirt. Çıktıyı {target_language} dilinde ver. Metin: \n\n{text}"
         )
     elif platform == "Genel Blog Yazısı":
         format_prompt = (
-            f"Aşağıdaki metni bir blog yazısı formatına dönüştür. Blogun ana başlığını, alt başlıklarını ve paragraflarını açıkça belirt. "
+            f"{format_prompt_base}"
+            f"Yukarıdaki şirket bilgilerini göz önünde bulundurarak, aşağıdaki metni bir blog yazısı formatına dönüştür. Blogun ana başlığını, alt başlıklarını ve paragraflarını açıkça belirt. "
             f"Okunabilirliği artırmak için giriş, gelişme (alt başlıklar kullanarak) ve sonuç bölümleri oluştur. "
             f"Anahtar kelimelerle zenginleştirilmiş, bilgilendirici ve SEO dostu bir yapı kur. "
-            f"Metal evler, prefabrik ve tiny house kültürüne ilgi duyan Avrupa'daki okuyucular için kapsamlı ve akıcı bir anlatım sağla. "
-            f"Çıktıyı {target_language} dilinde ver. Metin: \n\n{text}"
+            f"Web sitesi ve katalog linklerini uygun yerlerde belirt. Çıktıyı {target_language} dilinde ver. Metin: \n\n{text}"
         )
     elif platform == "E-posta Bülteni":
         format_prompt = (
-            f"Aşağıdaki metni kısa, öz ve okuyucuyu harekete geçiren bir e-posta bülteni içeriğine dönüştür. "
+            f"{format_prompt_base}"
+            f"Yukarıdaki şirket bilgilerini göz önünde bulundurarak, aşağıdaki metni kısa, öz ve okuyucuyu harekete geçiren bir e-posta bülteni içeriğine dönüştür. "
             f"Net bir konu başlığı (subject line) öner, kısa giriş, ana faydaları vurgulayan maddeler veya kısa paragraflar ve net bir harekete geçirici mesaj (CTA) içer. "
-            f"Metal evler, prefabrik ve tiny house kültürüyle ilgilenen Avrupa'daki abonelere hitap et. "
-            f"Çıktıyı {target_language} dilinde ver. Metin: \n\n{text}"
+            f"Web sitesi ve katalog linklerini uygun yerlerde belirt. Çıktıyı {target_language} dilinde ver. Metin: \n\n{text}"
         )
     else: # Varsayılan veya bilinmeyen platformlar için
         format_prompt = (
-            f"Aşağıdaki metni genel bir sosyal medya platformu için uygun, ilgi çekici ve etkileşim artırıcı bir gönderi formatında yeniden yaz. "
+            f"{format_prompt_base}"
+            f"Yukarıdaki şirket bilgilerini göz önünde bulundurarak, aşağıdaki metni genel bir sosyal medya platformu için uygun, ilgi çekici ve etkileşim artırıcı bir gönderi formatında yeniden yaz. "
             f"Gerektiğinde emoji ve uygun hashtagler ekle. Metni orijinal anlamını koruyarak düzenle. "
             f"Çıktıyı {target_language} dilinde ver. "
             f"Metin: \n\n{text}"
@@ -178,17 +216,20 @@ def format_text_for_social_media(text, platform, target_language="Türkçe"):
             return "Hata: Gemini API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
         return f"Hata: Metin formatlama hatası (AI): {e}"
 
-# --- YouTube Video Fikri Oluşturma Fonksiyonu (Gemini Flash) - DOĞRUDAN AI ÇAĞRISI ---
+# --- YouTube Video Fikri Oluşturma Fonksiyonu (Gemini Flash) ---
 @st.cache_data
 def generate_youtube_idea_gemini(prompt_text, target_language="Türkçe"):
     model = genai.GenerativeModel('gemini-2.0-flash')
-    youtube_prompt = (
+    # Şirket bilgilerini prompt'a ekle
+    full_prompt = (
+        f"{COMPANY_INFO_CONTEXT}\n\n"
+        f"Yukarıdaki şirket bilgilerini ve faaliyet alanlarını göz önünde bulundurarak, "
         f"'{prompt_text}' konusunda bir YouTube videosu fikri oluştur. "
         f"Başlık önerileri, anahtar noktalar (video içeriği), kısa bir senaryo taslağı (giriş, gelişme, sonuç) ve potansiyel görsel/çekim fikirleri içermeli. "
         f"Çıktıyı {target_language} dilinde ver."
     )
     try:
-        response = model.generate_content(youtube_prompt)
+        response = model.generate_content(full_prompt)
         return response.text
     except Exception as e:
         error_msg = str(e)
@@ -219,10 +260,12 @@ def generate_video_from_backend(video_prompt_text, target_language="Türkçe"):
     endpoint = "/api/generate_video"
     payload = {"video_prompt_text": video_prompt_text, "target_language": target_language}
     response = call_backend_api(endpoint, method="POST", payload=payload)
+    # Backend'den gelen hata mesajlarını kontrol et
+    if "error" in response:
+        return f"Hata: Video oluşturma isteği başarısız oldu. Detay: {response['error']}"
     return response.get("message", "Video oluşturma isteği gönderilemedi.") + " " + \
            response.get("status_url", "Durum URL'si yok.") + " " + \
-           response.get("estimated_time", "") + " Video ID: " + str(response.get("video_id"))
-
+           response.get("estimated_time", "") + " Video ID: " + str(response.get("video_id", "Yok"))
 
 def get_social_stats_from_backend():
     endpoint = "/api/social_stats" # Backend'deki mevcut endpoint
@@ -274,7 +317,7 @@ with col1:
 with col2:
     if st.button('Metin Oluştur', type="primary", key='generate_text_button'):
         with st.spinner(f"'{selected_language}' dilinde içerik oluşturuluyor..."):
-            generated_content = generate_text_gemini_flash(prompt_text, selected_language) # Doğrudan çağrı
+            generated_content = generate_text_gemini_flash(prompt_text, selected_language)
         st.session_state.last_generated_text = generated_content
         st.session_state.last_selected_language = selected_language
         st.markdown("### Oluşturulan Metin:")
@@ -292,11 +335,10 @@ if 'last_generated_text' in st.session_state and st.session_state.last_generated
     with col4:
         if st.button('Formatla ve Paylaş (AI)', type="secondary", key='format_share_button'):
             with st.spinner(f"Metin '{selected_platform}' için formatlanıyor..."):
-                formatted_text = format_text_for_social_media(st.session_state.last_generated_text, selected_platform, st.session_state.last_selected_language) # Doğrudan çağrı
+                formatted_text = format_text_for_social_media(st.session_state.last_generated_text, selected_platform, st.session_state.last_selected_language)
             st.markdown("### Oluşturulan Metin:")
             st.code(formatted_text, language='markdown')
 
-            # Sosyal Medya Paylaşım Linkleri
             encoded_formatted_text_share = requests.utils.quote(formatted_text)
             website_url = "https://www.premiumpluscy.eu"
             linkedin_share_url = f"https://www.linkedin.com/feed/?shareActive=true&text={encoded_formatted_text_share}"
@@ -325,11 +367,10 @@ if uploaded_file is not None:
     
     if st.button('Görseli Yorumla', type="secondary", key='interpret_image_button'):
         with st.spinner("Görsel yorumlanıyor..."):
-            # Görseli base64'e dönüştürerek direkt Gemini Vision'a gönder
             buffered = BytesIO()
             image.save(buffered, format="PNG")
             img_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-            interpretation = interpret_image_gemini_vision(Image.open(BytesIO(base64.b64decode(img_b64)))) # Doğrudan çağrı
+            interpretation = interpret_image_gemini_vision(Image.open(BytesIO(base64.b64decode(img_b64))))
         st.markdown("### Görsel Yorumu:")
         st.code(interpretation, language='markdown')
 
@@ -352,7 +393,7 @@ if st.button('Görsel Oluştur', type="primary", key='generate_image_button'):
             st.stop()
     
     with st.spinner(f"Görsel oluşturuluyor: '{image_prompt[:50]}...'"):
-        generated_image_b64 = generate_image_dalle(image_prompt) # Doğrudan çağrı
+        generated_image_b64 = generate_image_dalle(image_prompt)
 
     if generated_image_b64 and not "Hata:" in generated_image_b64:
         st.markdown("### Oluşturulan Görsel:")
@@ -387,7 +428,7 @@ with col5:
                 st.stop()
         
         with st.spinner(f"YouTube video fikri oluşturuluyor: '{youtube_prompt[:50]}...'"):
-            youtube_idea = generate_youtube_idea_gemini(youtube_prompt, "Türkçe") # Doğrudan çağrı
+            youtube_idea = generate_youtube_idea_gemini(youtube_prompt, "Türkçe")
         st.session_state.last_youtube_idea = youtube_idea
         st.markdown("### Oluşturulan YouTube Video Fikri:")
         st.code(youtube_idea, language='markdown')
@@ -400,8 +441,8 @@ with col6:
         else:
             st.error("Önce bir YouTube Fikri oluşturmanız gerekiyor.")
 
-# --- AI ile Kısa Video Oluşturma (Placeholder) Bölümü ---
-st.header("AI ile Kısa Video Oluştur (Geliştirme Aşamasında)")
+# --- AI ile Kısa Video Oluşturma (Backend'e yönlendirildi) Bölümü ---
+st.header("AI ile Kısa Video Oluştur")
 st.markdown("<p style='font-size:13px; color:#555;'>*Yukarıdaki 'YouTube Video Fikri Oluştur' bölümünde üretilen son fikri kullanır.</p>", unsafe_allow_html=True)
 
 video_creation_prompt_input = st.text_area(
@@ -418,9 +459,9 @@ if st.button('Video Oluştur (API Gerekli)', type="secondary", key='generate_sho
         st.stop()
     
     with st.spinner(f"Video oluşturma isteği: '{video_creation_prompt_input[:50]}...'"):
-        generated_video_info = generate_video_from_backend(video_creation_prompt_input, "Türkçe") # Backend'e yönlendirildi
+        generated_video_info = generate_video_from_backend(video_creation_prompt_input, "Türkçe")
     st.markdown("### Oluşturulan Video Bilgisi:")
-    st.code(generated_video_info, language='markdown') # Backend'den gelen yanıtı göster
+    st.code(generated_video_info, language='markdown')
 
 # --- Sosyal Medya İstatistikleri Bölümü ---
 st.header("Sosyal Medya İstatistikleri")
