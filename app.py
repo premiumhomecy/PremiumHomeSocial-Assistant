@@ -1,359 +1,373 @@
-    import streamlit as st
-    import os
-    import requests
-    import json
-    import base64
-    from PIL import Image
-    from io import BytesIO
-    from urllib.parse import urlparse, parse_qs # URL'leri ayrıştırmak için eklendi
+import streamlit as st
+import os
+import requests # Backend iletişimleri ve görsel indirme için
+import json
+import base64
+from PIL import Image
+from io import BytesIO
+from urllib.parse import urlparse, parse_qs # URL'leri ayrıştırmak için
 
-    # AI API'leri için doğrudan import'lar
-    import google.generativeai as genai
-    from openai import OpenAI
-    from dotenv import load_dotenv
+# AI API'leri için doğrudan import'lar
+import google.generativeai as genai
+from openai import OpenAI
+from dotenv import load_dotenv
 
-    # --- API Anahtarlarını Yapılandırma ---
-    try:
-        load_dotenv() 
-        GEMINI_API_KEY = os.environ.get("GOOGLE_API_KEY")
-        OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-        
-        if not GEMINI_API_KEY and "GOOGLE_API_KEY" in st.secrets:
-            GEMINI_API_KEY = st.secrets["GOOGLE_API_KEY"]
-        if not OPENAI_API_KEY and "OPENAI_API_KEY" in st.secrets:
-            OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+# --- API Anahtarlarını Yapılandırma ---
+# Streamlit Cloud'da 'Secrets' kullanarak veya yerel ortam değişkenleri (.env ile)
+# Önemli: Bu anahtarları doğrudan GitHub'a YÜKLEMEYİN!
+try:
+    # Yerel çalıştırmalar için .env dosyasını yükle
+    load_dotenv() 
 
-        if not GEMINI_API_KEY:
-            st.error("Gemini API anahtarı bulunamadı. Lütfen 'GOOGLE_API_KEY' ortam değişkenini veya Streamlit Secrets'ı ayarlayın.")
-            st.stop()
-        if not OPENAI_API_KEY:
-            st.error("OpenAI API anahtarı bulunamadı. Lütfen 'OPENAI_API_KEY' ortam değişkenini veya Streamlit Secrets'ı ayarlayın.")
-            st.stop()
+    # Ortam değişkenlerinden oku (hem yerel .env hem de sistem ortam değişkenleri)
+    GEMINI_API_KEY = os.environ.get("GOOGLE_API_KEY")
+    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+    
+    # Eğer Streamlit Cloud'da çalışıyorsak ve ortam değişkenleri ayarlı değilse st.secrets'ı dene
+    if not GEMINI_API_KEY and "GOOGLE_API_KEY" in st.secrets:
+        GEMINI_API_KEY = st.secrets["GOOGLE_API_KEY"]
+    if not OPENAI_API_KEY and "OPENAI_API_KEY" in st.secrets:
+        OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+
+    if not GEMINI_API_KEY:
+        st.error("Gemini API anahtarı bulunamadı. Lütfen 'GOOGLE_API_KEY' ortam değişkenini veya Streamlit Secrets'ı ayarlayın.")
+        st.stop() # Anahtar yoksa uygulamayı durdur
+
+    if not OPENAI_API_KEY:
+        st.error("OpenAI API anahtarı bulunamadı. Lütfen 'OPENAI_API_KEY' ortam değişkenini veya Streamlit Secrets'ı ayarlayın.")
+        st.stop() # Anahtar yoksa uygulamayı durdur
             
-        genai.configure(api_key=GEMINI_API_KEY)
-        openai_client = OpenAI(api_key=OPENAI_API_KEY)
-        
-    except Exception as e:
-        st.error(f"API anahtarları yapılandırılamadı: {e}. Lütfen anahtarlarınızı kontrol edin.")
-        st.stop()
+    genai.configure(api_key=GEMINI_API_KEY)
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    
+except Exception as e:
+    st.error(f"API anahtarları yapılandırılamadı: {e}. Lütfen anahtarlarınızı kontrol edin.")
+    st.stop()
 
-    # --- Şirket Bilgileri ---
-    COMPANY_INFO_CONTEXT = """
-    Şirket Adı: Premium Home
-    Ana Faaliyet Alanları: Metal evler, prefabrik yapılar, Tiny House üretimi ve inşaatı, nanoteknoloji zemin ısıtma sistemleri. Anahtar teslim çözümler sunar.
-    Misyon: Yenilikçi, sürdürülebilir, modern ve uygun fiyatlı yaşam/çalışma alanları sunmak.
-    Hedef Kitle: Metal ev ve prefabrik yapılarla ilgilenen, Tiny House kültürünü benimsemek isteyen, Avrupa bölgelerinde bulunan kişiler ve profesyoneller.
-    """
+# --- Şirket Bilgileri (AI'ya sürekli anımsatılacak) ---
+COMPANY_INFO_CONTEXT = """
+Şirket Adı: Premium Home
+Ana Faaliyet Alanları: Metal evler, prefabrik yapılar, Tiny House üretimi ve inşaatı, nanoteknoloji zemin ısıtma sistemleri. Anahtar teslim çözümler sunar.
+Misyon: Yenilikçi, sürdürülebilir, modern ve uygun fiyatlı yaşam/çalışma alanları sunmak.
+Hedef Kitle: Metal ev ve prefabrik yapılarla ilgilenen, Tiny House kültürünü benimsemek isteyen, Avrupa bölgelerinde bulunan kişiler ve profesyoneller.
+"""
 
-    COMPANY_SOCIAL_PRESENCE_CONTEXT = """
-    Web Sitesi: https://www.premiumpluscy.eu
-    Katalog Sitesi: https://linktr.ee/premiumplushome
-    Instagram Hesabı: https://www.instagram.com/premiumplushome
-    Facebook Sayfası: https://www.facebook.com/PremiumPlusHomeCyprus
-    LinkedIn Sayfası: https://www.linkedin.com/company/premium-home-ltd
-    """
+COMPANY_SOCIAL_PRESENCE_CONTEXT = """
+Web Sitesi: https://www.premiumpluscy.eu
+Katalog Sitesi: https://linktr.ee/premiumplushome
+Instagram Hesabı: https://www.instagram.com/premiumplushome
+Facebook Sayfası: https://www.facebook.com/PremiumPlusHomeCyprus
+LinkedIn Sayfası: https://www.linkedin.com/company/premium-home-ltd
+"""
 
-    # --- Backend API URL'si ---
-    BACKEND_API_URL = "https://premium-home-social-api.onrender.com" # KENDİ RENDER URL'NİZİ BURAYA YAPIŞTIRIN!
+# --- Backend API URL'si ---
+BACKEND_API_URL = "https://premium-home-social-api.onrender.com" # KENDİ RENDER URL'NİZİ BURAYA YAPIŞTIRIN!
 
-    # --- AI Metin Üretme Fonksiyonu (Gemini Flash) ---
-    @st.cache_data
-    def generate_text_gemini_flash(prompt_text, target_language="Türkçe"):
-        # ... (aynı kalacak) ...
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        full_prompt = (
-            f"{COMPANY_INFO_CONTEXT}\n\n"
-            f"Yukarıdaki şirket bilgilerini ve faaliyet alanlarını göz önünde bulundurarak, şu içerik isteğini tamamla: "
-            f"'{prompt_text}'. Lütfen çıktıyı {target_language} dilinde oluştur."
-        )
-        try:
-            response = model.generate_content(full_prompt)
-            if response and response.text:
-                return response.text
-            else:
-                return "Yanıt alınamadı veya boş. Lütfen prompt'u kontrol edin."
-        except Exception as e:
-            error_msg = str(e)
-            if "quota" in error_msg.lower() or "429" in error_msg or "TooManyRequests" in error_msg:
-                return f"Hata: Kota aşımı! Lütfen daha sonra tekrar deneyin veya kota durumunuzu kontrol edin. Detay: {e}"
-            elif "api key not valid" in error_msg.lower() or "authentication error" in error_msg.lower():
-                return "Hata: Gemini API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
-            else:
-                return f"Hata: API Hatası: {e}"
-
-    # --- AI Görsel Yorumlama Fonksiyonu (Gemini Vision) ---
-    @st.cache_data(hash_funcs={Image.Image: lambda _: None})
-    def interpret_image_gemini_vision(pil_image_object, prompt_text="Bu resimde ne görüyorsun?"):
-        # ... (aynı kalacak) ...
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        try:
-            contents = [prompt_text, pil_image_object]
-            response = model.generate_content(contents)
-            if response and response.text:
-                return response.text
-            else:
-                return "Görsel yorumu alınamadı veya boş."
-        except Exception as e:
-            error_msg = str(e)
-            if "quota" in error_msg.lower() or "429" in error_msg or "TooManyRequests" in error_msg:
-                return f"Hata: Görsel yorumlama kota aşımı! Lütfen daha sonra tekrar deneyin. Detay: {e}"
-            elif "api key not valid" in error_msg.lower() or "authentication error" in error_msg.lower():
-                return "Hata: Gemini API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
-            else:
-                return f"Hata: Görsel yorumlama hatası: {e}"
-
-    # --- AI Görsel Oluşturma Fonksiyonu (DALL-E 3) ---
-    def generate_image_dalle(image_prompt_text):
-        global openai_client
-        if not openai_client:
-            return "Hata: OpenAI istemcisi başlatılamadı."
-        
-        full_image_prompt = (
-            f"{COMPANY_INFO_CONTEXT}\n\n"
-            f"Yukarıdaki şirket bilgilerini ve faaliyet alanlarını göz önünde bulundurarak, şu görseli oluştur: "
-            f"'{image_prompt_text}'. Lütfen modern, profesyonel ve yüksek çözünürlüklü bir stil kullan."
-        )
-        try:
-            response = openai_client.images.generate(
-                model="dall-e-3",
-                prompt=full_image_prompt,
-                n=1,
-                size="1024x1024"
-            )
-            if response and response.data and response.data[0].url:
-                image_url = response.data[0].url
-                img_data = requests.get(image_url).content
-                return base64.b64encode(img_data).decode('utf-8')
-            else:
-                return "Görsel oluşturulamadı veya URL bulunamadı."
-        except Exception as e:
-            error_msg = str(e)
-            if "quota" in error_msg.lower() or "429" in error_msg or "TooManyRequests" in error_msg or "billing_not_active" in error_msg.lower() or "insufficient_quota" in error_msg.lower():
-                return f"Hata: Görsel oluşturma kota/ödeme hatası! Lütfen OpenAI hesabınızdaki DALL-E faturalandırmasını kontrol edin. Detay: {e}"
-            elif "authentication error" in error_msg.lower():
-                return "Hata: OpenAI API anahtarı geçersiz. Lütfen anahtarınızı kontrol edin."
-            else:
-                return f"Hata: Görsel oluşturma hatası: {e}"
-
-    # --- AI ile Metin Formatlama Fonksiyonu ---
-    @st.cache_data
-    def format_text_for_social_media(text, platform, target_language="Türkçe"):
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        
-        format_prompt_base = f"{COMPANY_INFO_CONTEXT}\n{COMPANY_SOCIAL_PRESENCE_CONTEXT}\n\n"
-
-        if platform == "Instagram":
-            format_prompt = (
-                f"{format_prompt_base}"
-                f"Yukarıdaki şirket bilgilerini ve sosyal medya hesaplarını göz önünde bulundurarak, aşağıdaki metni görsel odaklı ve direkt paylaşılmaya hazır bir Instagram gönderisine dönüştür. "
-                f"Verilen örnekteki gibi kısa paragraflar, emoji ve trend hashtagler kullan. '📞 Contact Us' ve '🔗 Website' gibi net CTA'lar ekle. "
-                f"Metni orijinal anlamını koruyarak, Instagram'ın karakter sınırlamalarına uygun ama bilgilendirici olacak şekilde {target_language} dilinde düzenle. "
-                f"Örnek İçerik Tarzı:\n"
-                f"🏡 Countryside 72m² – Modern, Modular, and Comfortable Living!\n\n"
-                f"Looking for a stylish, energy-efficient home?\n"
-                f"✅ Spacious Design: 3 bedrooms, 1 kitchen, 1 bathroom\n"
-                f"✅ Durability & Quality: Premium+ materials, insulated walls, and aluminum windows\n"
-                f"✅ Fast Installation: Average 8 weeks delivery time\n"
-                f"✅ Turnkey Price: Starting from €59,900 (excluding VAT)\n\n"
-                f"📞 Contact Us:\n"
-                f"📍 Address: Iasonos 1082, Nicosia, Cyprus\n"
-                f"🌐 Web: www.premiumpluscy.eu\n"
-                f"📩 Email: seller@premiumpluscy.eu\n"
-                f"📲 Phone: +357 97550946 | +357 22584081\n\n"
-                f"📩 Send us a DM or visit our website for more details!\n"
-                f"🔗 www.premiumpluscy.eu\n\n"
-                f"#ModularHome #PrefabHouse #EcoFriendlyLiving #SmartLiving #minimalisthome\n\n"
-                f"Metin: \n\n{text}"
-            )
-        elif platform == "Facebook":
-            format_prompt = (
-                f"{format_prompt_base}"
-                f"Yukarıdaki şirket bilgilerini ve sosyal medya hesaplarını göz önünde bulundurarak, aşağıdaki metni Facebook topluluğu için samimi, bilgilendirici ve direkt paylaşılmaya hazır bir gönderiye dönüştür. "
-                f"Paylaşımı teşvik eden sorular, topluluk odaklı ifadeler ve uygun hashtagler kullan. "
-                f"Metni video veya görsel içeriğe eşlik edebilecek, sohbeti başlatacak şekilde {target_language} dilinde yaz. "
-                f"Şirket web sitesi ve katalog linklerini uygun yerlerde belirterek, kişisel hesap yerine işletme sayfası üzerinden paylaşılacak bir dil kullan. Metin: \n\n{text}"
-            )
-        elif platform == "LinkedIn":
-            format_prompt = (
-                f"{format_prompt_base}"
-                f"Yukarıdaki şirket bilgilerini ve sosyal medya hesaplarını göz önünde bulundurarak, aşağıdaki metni LinkedIn profesyonel ağı için bilgilendirici, otoriter ve direkt paylaşılmaya hazır bir gönderiye dönüştür. "
-                f"Sektörel içgörüler, profesyonel terimler ve konuyla ilgili hashtagler kullan. "
-                f"Değer katan bilgiler sun ve tartışmayı teşvik et. "
-                f"Şirket web sitesi ve katalog linklerini uygun yerlerde belirterek, kurumsal bir dil kullan. Metin: \n\n{text}"
-            )
-        elif platform == "Genel Blog Yazısı":
-            format_prompt = (
-                f"{format_prompt_base}"
-                f"Yukarıdaki şirket bilgilerini göz önünde bulundurarak, aşağıdaki metni bir blog yazısı formatına dönüştür. Blogun ana başlığını, alt başlıklarını ve paragraflarını açıkça belirt. "
-                f"Okunabilirliği artırmak için giriş, gelişme (alt başlıklar kullanarak) ve sonuç bölümleri oluştur. "
-                f"Anahtar kelimelerle zenginleştirilmiş, bilgilendirici ve SEO dostu bir yapı kur. "
-                f"Web sitesi ve katalog linklerini uygun yerlerde belirt. Çıktıyı {target_language} dilinde ver. Metin: \n\n{text}"
-            )
-        elif platform == "E-posta Bülteni":
-            format_prompt = (
-                f"{format_prompt_base}"
-                f"Yukarıdaki şirket bilgilerini göz önünde bulundurarak, aşağıdaki metni kısa, öz ve okuyucuyu harekete geçiren bir e-posta bülteni içeriğine dönüştür. "
-                f"Net bir konu başlığı (subject line) öner, kısa giriş, ana faydaları vurgulayan maddeler veya kısa paragraflar ve net bir harekete geçirici mesaj (CTA) içer. "
-                f"Web sitesi ve katalog linklerini uygun yerlerde belirt. Çıktıyı {target_language} dilinde ver. Metin: \n\n{text}"
-            )
-        else: # Varsayılan veya bilinmeyen platformlar için
-            format_prompt = (
-                f"{format_prompt_base}"
-                f"Yukarıdaki şirket bilgilerini göz önünde bulundurarak, aşağıdaki metni genel bir sosyal medya platformu için uygun, ilgi çekici ve etkileşim artırıcı bir gönderi formatında yeniden yaz. "
-                f"Gerektiğinde emoji ve uygun hashtagler ekle. Metni orijinal anlamını koruyarak düzenle. "
-                f"Çıktıyı {target_language} dilinde ver. "
-                f"Metin: \n\n{text}"
-            )
-
-        try:
-            response = model.generate_content(format_prompt)
-            return response.text
-        except Exception as e:
-            error_msg = str(e)
-            if "api key not valid" in error_msg.lower() or "authentication error" in error_msg.lower():
-                return "Hata: Gemini API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
-            return f"Hata: Metin formatlama hatası (AI): {e}"
-
-    # --- YouTube Video Fikri Oluşturma Fonksiyonu (Gemini Flash) ---
-    @st.cache_data
-    def generate_youtube_idea_gemini(prompt_text, target_language="Türkçe"):
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        # Şirket bilgilerini prompt'a ekle
-        full_prompt = (
-            f"{COMPANY_INFO_CONTEXT}\n{COMPANY_SOCIAL_PRESENCE_CONTEXT}\n\n" # Sosyal medya bilgileri de eklendi
-            f"Yukarıdaki şirket bilgilerini ve faaliyet alanlarını göz önünde bulundurarak, "
-            f"'{prompt_text}' konusunda bir YouTube videosu fikri oluştur. "
-            f"Başlık önerileri, anahtar noktalar (video içeriği), kısa bir senaryo taslağı (giriş, gelişme, sonuç) ve potansiyel görsel/çekim fikirleri içermeli. "
-            f"Hazırlanan metin ve video fikri Premium Home'un web sitesi ve sosyal medya kanallarına uygun olmalıdır. " # Vurgu eklendi
-            f"Çıktıyı {target_language} dilinde ver."
-        )
-        try:
-            response = model.generate_content(full_prompt)
-            return response.text
-        except Exception as e:
-            error_msg = str(e)
-            if "api key not valid" in error_msg.lower() or "authentication error" in error_msg.lower():
-                return "Hata: Gemini API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
-            return f"Hata: YouTube video fikri oluşturma hatası (AI): {e}"
-
-    # --- Frontend Yardımcı Fonksiyonları (Backend ile İletişim Kurar) ---
-    def call_backend_api(endpoint, method="GET", payload=None):
-        """Genel backend API çağrı fonksiyonu."""
-        url = f"{BACKEND_API_URL}{endpoint}"
-        try:
-            if method == "POST":
-                response = requests.post(url, json=payload)
-            else: # GET
-                response = requests.get(url)
-            response.raise_for_status() # HTTP hata kodları için istisna fırlatır
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            st.error(f"Backend API'ye bağlanırken hata oluştu: {e}")
-            return {"error": f"API Bağlantı Hatası: {e}"}
-        except json.JSONDecodeError as e:
-            st.error(f"Backend'den geçersiz JSON yanıtı alındı: {e}. Yanıt: {response.text}")
-            return {"error": f"JSON Çözümleme Hatası: {e}"}
-
-    # Backend'den video oluşturma isteği gönderme
-    def generate_video_from_backend(video_prompt_text, target_language="Türkçe"):
-        endpoint = "/api/generate_video"
-        payload = {"video_prompt_text": video_prompt_text, "target_language": target_language}
-        response = call_backend_api(endpoint, method="POST", payload=payload)
-        # Backend'den gelen hata mesajlarını kontrol et
-        if "error" in response:
-            return f"Hata: Video oluşturma isteği başarısız oldu. Detay: {response['error']}"
-        return response.get("message", "Video oluşturma isteği gönderilemedi.") + " " + \
-               response.get("status_url", "Durum URL'si yok.") + " " + \
-               response.get("estimated_time", "") + " Video ID: " + str(response.get("video_id", "Yok"))
-
-    def get_social_stats_from_backend():
-        endpoint = "/api/social_stats" # Backend'deki mevcut endpoint
-        return call_backend_api(endpoint, method="GET")
-
-    # --- Streamlit Uygulama Arayüzü ---
-    st.set_page_config(layout="wide")
-    st.title("Premium Home AI Sosyal Medya Asistanı 🚀")
-    st.markdown(f"<p style='font-size:12px; color:#888; text-align: right;'>Sürüm: v3 Beta</p>", unsafe_allow_html=True) # Sürüm bilgisi
-
-    st.markdown("""
-        Bu asistan, Premium Home için sosyal medya içerikleri oluşturmanıza, görselleri yorumlamanıza ve yeni fikirler üretmenize yardımcı olur.
-        Metal evler, prefabrik yapılar ve Tiny House kültürü odaklı içerikler üretir.
-        ---
-    """)
-
-    # --- Sosyal Medya Yetkilendirme Bölümü ---
-    st.header("Sosyal Medya Hesaplarını Yetkilendir")
-    st.markdown("""
-        İstatistikleri çekebilmek ve diğer sosyal medya özelliklerini kullanabilmek için hesaplarınızı bağlamalısınız.
-        Bu işlem sizi backend servisimize yönlendirecektir.
-    """)
-
-    col_auth1, col_auth2 = st.columns(2)
-    with col_auth1:
-        if st.button("Facebook/Instagram'ı Yetkilendir", type="primary", key="auth_facebook_button"):
-            st.markdown(f"[Facebook/Instagram Yetkilendirme Başlat]({BACKEND_API_URL}/auth/facebook)", unsafe_allow_html=True)
-            st.info("Yukarıdaki linke tıklayın ve Facebook yetkilendirmesini tamamlayın. Ardından bu uygulamaya geri dönün.")
-
-    with col_auth2:
-        if st.button("Google/YouTube'u Yetkilendir", type="primary", key="auth_google_button"):
-            st.markdown(f"[Google/YouTube Yetkilendirme Başlat]({BACKEND_API_URL}/auth/google)", unsafe_allow_html=True)
-            st.info("Yukarıdaki linke tıklayın ve Google yetkilendirmesini tamamlayın. Ardından bu uygulamaya geri dönün.")
-
-    st.markdown("---")
-
-    # --- Metin Oluşturucu Bölümü ---
-    st.header("Metin Oluştur")
-    prompt_text = st.text_area(
-        'İçerik İsteği:',
-        placeholder='Örn: Kıbrıs\'taki Tiny House projelerinin avantajlarını anlatan bir sosyal medya metni yaz.',
-        height=150,
-        key='prompt_input'
+# --- AI Metin Üretme Fonksiyonu (Gemini Flash) ---
+@st.cache_data # Bu dekoratör fonksiyon çıktısını önbelleğe alır
+def generate_text_gemini_flash(prompt_text, target_language="Türkçe"):
+    model = genai.GenerativeModel('gemini-2.0-flash')
+    # Şirket bilgilerini prompt'a ekle
+    full_prompt = (
+        f"{COMPANY_INFO_CONTEXT}\n\n"
+        f"Yukarıdaki şirket bilgilerini ve faaliyet alanlarını göz önünde bulundurarak, şu içerik isteğini tamamla: "
+        f"'{prompt_text}'. Lütfen çıktıyı {target_language} dilinde oluştur."
     )
+    try:
+        response = model.generate_content(full_prompt)
+        if response and response.text:
+            return response.text
+        else:
+            return "Yanıt alınamadı veya boş. Lütfen prompt'u kontrol edin."
+    except Exception as e:
+        error_msg = str(e)
+        if "quota" in error_msg.lower() or "429" in error_msg or "TooManyRequests" in error_msg:
+            return f"Hata: Kota aşımı! Lütfen daha sonra tekrar deneyin veya kota durumunuzu kontrol edin. Detay: {e}"
+        elif "api key not valid" in error_msg.lower() or "authentication error" in error_msg.lower():
+            return "Hata: Gemini API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
+        else:
+            return f"Hata: API Hatası: {e}"
 
-    col1, col2 = st.columns(2)
-    with col1:
-        language_options = ['Türkçe', 'English', 'Ελληνικά']
-        selected_language = st.selectbox('Çıktı Dili:', language_options, key='lang_selector')
-    with col2:
-        if st.button('Metin Oluştur', type="primary", key='generate_text_button'):
-            with st.spinner(f"'{selected_language}' dilinde içerik oluşturuluyor..."):
-                generated_content = generate_text_gemini_flash(prompt_text, selected_language)
-            st.session_state.last_generated_text = generated_content
-            st.session_state.last_selected_language = selected_language
+# --- AI Görsel Yorumlama Fonksiyonu (Gemini Vision) ---
+@st.cache_data(hash_funcs={Image.Image: lambda _: None}) # PIL Image objesi için özel hash fonksiyonu
+def interpret_image_gemini_vision(pil_image_object, prompt_text="Bu resimde ne görüyorsun?"):
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    try:
+        contents = [prompt_text, pil_image_object]
+        response = model.generate_content(contents)
+        if response and response.text:
+            return response.text
+        else:
+            return "Görsel yorumu alınamadı veya boş."
+    except Exception as e:
+        error_msg = str(e)
+        if "quota" in error_msg.lower() or "429" in error_msg or "TooManyRequests" in error_msg:
+            return f"Hata: Görsel yorumlama kota aşımı! Lütfen daha sonra tekrar deneyin. Detay: {e}"
+        elif "api key not valid" in error_msg.lower() or "authentication error" in error_msg.lower():
+            return "Hata: Gemini API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
+        else:
+            return f"Hata: Görsel yorumlama hatası: {e}"
+
+# --- AI Görsel Oluşturma Fonksiyonu (DALL-E 3) ---
+def generate_image_dalle(image_prompt_text):
+    global openai_client
+    if not openai_client:
+        return "Hata: OpenAI istemcisi başlatılamadı."
+    
+    full_image_prompt = (
+        f"{COMPANY_INFO_CONTEXT}\n\n"
+        f"Yukarıdaki şirket bilgilerini ve faaliyet alanlarını göz önünde bulundurarak, şu görseli oluştur: "
+        f"'{image_prompt_text}'. Lütfen modern, profesyonel ve yüksek çözünürlüklü bir stil kullan."
+    )
+    try:
+        response = openai_client.images.generate(
+            model="dall-e-3",
+            prompt=full_image_prompt,
+            n=1,
+            size="1024x1024"
+        )
+        if response and response.data and response.data[0].url:
+            image_url = response.data[0].url
+            img_data = requests.get(image_url).content
+            return base64.b64encode(img_data).decode('utf-8')
+        else:
+            return "Görsel oluşturulamadı veya URL bulunamadı."
+    except Exception as e:
+        error_msg = str(e)
+        if "quota" in error_msg.lower() or "429" in error_msg or "TooManyRequests" in error_msg or "billing_not_active" in error_msg.lower() or "insufficient_quota" in error_msg.lower():
+            return f"Hata: Görsel oluşturma kota/ödeme hatası! Lütfen OpenAI hesabınızdaki DALL-E faturalandırmasını kontrol edin. Detay: {e}"
+        elif "authentication error" in error_msg.lower():
+            return "Hata: OpenAI API anahtarı geçersiz. Lütfen anahtarınızı kontrol edin."
+        else:
+            return f"Hata: Görsel oluşturma hatası: {e}"
+
+# --- AI ile Metin Formatlama Fonksiyonu ---
+@st.cache_data
+def format_text_for_social_media(text, platform, target_language="Türkçe"):
+    model = genai.GenerativeModel('gemini-2.0-flash')
+    
+    format_prompt_base = f"{COMPANY_INFO_CONTEXT}\n{COMPANY_SOCIAL_PRESENCE_CONTEXT}\n\n"
+
+    if platform == "Instagram":
+        format_prompt = (
+            f"{format_prompt_base}"
+            f"Yukarıdaki şirket bilgilerini ve sosyal medya hesaplarını göz önünde bulundurarak, aşağıdaki metni görsel odaklı ve direkt paylaşılmaya hazır bir Instagram gönderisine dönüştür. "
+            f"Verilen örnekteki gibi kısa paragraflar, emoji ve trend hashtagler kullan. '📞 Contact Us' ve '🔗 Website' gibi net CTA'lar ekle. "
+            f"Metni orijinal anlamını koruyarak, Instagram'ın karakter sınırlamalarına uygun ama bilgilendirici olacak şekilde {target_language} dilinde düzenle. "
+            f"Örnek İçerik Tarzı:\n"
+            f"🏡 Countryside 72m² – Modern, Modular, and Comfortable Living!\n\n"
+            f"Looking for a stylish, energy-efficient home?\n"
+            f"✅ Spacious Design: 3 bedrooms, 1 kitchen, 1 bathroom\n"
+            f"✅ Durability & Quality: Premium+ materials, insulated walls, and aluminum windows\n"
+            f"✅ Fast Installation: Average 8 weeks delivery time\n"
+            f"✅ Turnkey Price: Starting from €59,900 (excluding VAT)\n\n"
+            f"📞 Contact Us:\n"
+            f"📍 Address: Iasonos 1082, Nicosia, Cyprus\n"
+            f"🌐 Web: www.premiumpluscy.eu\n"
+            f"📩 Email: seller@premiumpluscy.eu\n"
+            f"📲 Phone: +357 97550946 | +357 22584081\n\n"
+            f"📩 Send us a DM or visit our website for more details!\n"
+            f"🔗 www.premiumpluscy.eu\n\n"
+            f"#ModularHome #PrefabHouse #EcoFriendlyLiving #SmartLiving #minimalisthome\n\n"
+            f"Metin: \n\n{text}"
+        )
+    elif platform == "Facebook":
+        format_prompt = (
+            f"{format_prompt_base}"
+            f"Yukarıdaki şirket bilgilerini ve sosyal medya hesaplarını göz önünde bulundurarak, aşağıdaki metni Facebook topluluğu için samimi, bilgilendirici ve direkt paylaşılmaya hazır bir gönderiye dönüştür. "
+            f"Paylaşımı teşvik eden sorular, topluluk odaklı ifadeler ve uygun hashtagler kullan. "
+            f"Metni video veya görsel içeriğe eşlik edebilecek, sohbeti başlatacak şekilde {target_language} dilinde yaz. "
+            f"Şirket web sitesi ve katalog linklerini uygun yerlerde belirterek, kişisel hesap yerine işletme sayfası üzerinden paylaşılacak bir dil kullan. Metin: \n\n{text}"
+            )
+    elif platform == "LinkedIn":
+        format_prompt = (
+            f"{format_prompt_base}"
+            f"Yukarıdaki şirket bilgilerini ve sosyal medya hesaplarını göz önünde bulundurarak, aşağıdaki metni LinkedIn profesyonel ağı için bilgilendirici, otoriter ve direkt paylaşılmaya hazır bir gönderiye dönüştür. "
+            f"Sektörel içgörüler, profesyonel terimler ve konuyla ilgili hashtagler kullan. "
+            f"Değer katan bilgiler sun ve tartışmayı teşvik et. "
+            f"Şirket web sitesi ve katalog linklerini uygun yerlerde belirterek, kurumsal bir dil kullan. Metin: \n\n{text}"
+            )
+    elif platform == "Genel Blog Yazısı":
+        format_prompt = (
+            f"{format_prompt_base}"
+            f"Yukarıdaki şirket bilgilerini göz önünde bulundurarak, aşağıdaki metni bir blog yazısı formatına dönüştür. Blogun ana başlığını, alt başlıklarını ve paragraflarını açıkça belirt. "
+            f"Okunabililiği artırmak için giriş, gelişme (alt başlıklar kullanarak) ve sonuç bölümleri oluştur. "
+            f"Anahtar kelimelerle zenginleştirilmiş, bilgilendirici ve SEO dostu bir yapı kur. "
+            f"Web sitesi ve katalog linklerini uygun yerlerde belirt. Çıktıyı {target_language} dilinde ver. Metin: \n\n{text}"
+            )
+    elif platform == "E-posta Bülteni":
+        format_prompt = (
+            f"{format_prompt_base}"
+            f"Yukarıdaki şirket bilgilerini göz önünde bulundurarak, aşağıdaki metni kısa, öz ve okuyucuyu harekete geçiren bir e-posta bülteni içeriğine dönüştür. "
+            f"Net bir konu başlığı (subject line) öner, kısa giriş, ana faydaları vurgulayan maddeler veya kısa paragraflar ve net bir harekete geçirici mesaj (CTA) içer. "
+            f"Web sitesi ve katalog linklerini uygun yerlerde belirt. Çıktıyı {target_language} dilinde ver. Metin: \n\n{text}"
+            )
+    elif platform == "Bazaraki.com İlanı": # Yeni eklenen formatlama seçeneği
+        format_prompt = (
+            f"{format_prompt_base}"
+            f"Yukarıdaki şirket bilgilerini ve faaliyet alanlarını göz önünde bulundurarak, aşağıdaki metni Kıbrıs'taki Bazaraki.com emlak sitesi için uygun, kısa ve çekici bir ilan metnine dönüştür. "
+            f"İlanın ilk paragrafı kısa ve vurucu olmalı, ardından madde işaretleriyle temel özellikleri (metrekare, oda sayısı, malzeme, kurulum süresi, fiyat aralığı) belirtilmelidir. "
+            f"Müşteriyi web sitesi veya katalog sitesine yönlendiren net bir harekete geçirici mesaj (CTA) içermelidir. "
+            f"Konum olarak Kıbrıs'a odaklan. Çıktıyı {target_language} dilinde ver. Metin: \n\n{text}"
+            )
+    else: # Varsayılan veya bilinmeyen platformlar için
+        format_prompt = (
+            f"{format_prompt_base}"
+            f"Yukarıdaki şirket bilgilerini göz önünde bulundurarak, aşağıdaki metni genel bir sosyal medya platformu için uygun, ilgi çekici ve etkileşim artırıcı bir gönderi formatında yeniden yaz. "
+            f"Gerektiğinde emoji ve uygun hashtagler ekle. Metni orijinal anlamını koruyarak düzenle. "
+            f"Çıktıyı {target_language} dilinde ver. "
+            f"Metin: \n\n{text}"
+        )
+
+    try:
+        response = model.generate_content(format_prompt)
+        return response.text
+    except Exception as e:
+        error_msg = str(e)
+        if "api key not valid" in error_msg.lower() or "authentication error" in error_msg.lower():
+            return "Hata: Gemini API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
+        return f"Hata: Metin formatlama hatası (AI): {e}"
+
+# --- YouTube Video Fikri Oluşturma Fonksiyonu (Gemini Flash) ---
+@st.cache_data
+def generate_youtube_idea_gemini(prompt_text, target_language="Türkçe"):
+    model = genai.GenerativeModel('gemini-2.0-flash')
+    # Şirket bilgilerini prompt'a ekle
+    full_prompt = (
+        f"{COMPANY_INFO_CONTEXT}\n{COMPANY_SOCIAL_PRESENCE_CONTEXT}\n\n"
+        f"Yukarıdaki şirket bilgilerini ve faaliyet alanlarını göz önünde bulundurarak, "
+        f"'{prompt_text}' konusunda bir YouTube videosu fikri oluştur. "
+        f"Başlık önerileri, anahtar noktalar (video içeriği), kısa bir senaryo taslağı (giriş, gelişme, sonuç) ve potansiyel görsel/çekim fikirleri içermeli. "
+        f"Hazırlanan metin ve video fikri Premium Home'un web sitesi ve sosyal medya kanallarına uygun olmalıdır. "
+        f"Çıktıyı {target_language} dilinde ver."
+    )
+    try:
+        response = model.generate_content(full_prompt)
+        return response.text
+    except Exception as e:
+        error_msg = str(e)
+        if "api key not valid" in error_msg.lower() or "authentication error" in error_msg.lower():
+            return "Hata: Gemini API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
+        return f"Hata: YouTube video fikri oluşturma hatası (AI): {e}"
+
+# --- Frontend Yardımcı Fonksiyonları (Backend ile İletişim Kurar) ---
+def call_backend_api(endpoint, method="GET", payload=None):
+    """Genel backend API çağrı fonksiyonu."""
+    url = f"{BACKEND_API_URL}{endpoint}"
+    try:
+        if method == "POST":
+            response = requests.post(url, json=payload)
+        else: # GET
+            response = requests.get(url)
+        response.raise_for_status() # HTTP hata kodları için istisna fırlatır
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"Backend API'ye bağlanırken hata oluştu: {e}")
+        return {"error": f"API Bağlantı Hatası: {e}"}
+    except json.JSONDecodeError as e:
+        st.error(f"Backend'den geçersiz JSON yanıtı alındı: {e}. Yanıt: {response.text}")
+        return {"error": f"JSON Çözümleme Hatası: {e}"}
+
+# Backend'den video oluşturma isteği gönderme
+def generate_video_from_backend(video_prompt_text, target_language="Türkçe"):
+    endpoint = "/api/generate_video"
+    payload = {"video_prompt_text": video_prompt_text, "target_language": target_language}
+    response = call_backend_api(endpoint, method="POST", payload=payload)
+    # Backend'den gelen hata mesajlarını kontrol et
+    if "error" in response:
+        return f"Hata: Video oluşturma isteği başarısız oldu. Detay: {response['error']}"
+    return response.get("message", "Video oluşturma isteği gönderilemedi.") + " " + \
+           response.get("status_url", "Durum URL'si yok.") + " " + \
+           response.get("estimated_time", "") + " Video ID: " + str(response.get("video_id", "Yok"))
+
+def get_social_stats_from_backend():
+    endpoint = "/api/social_stats" # Backend'deki mevcut endpoint
+    return call_backend_api(endpoint, method="GET")
+
+# --- Streamlit Uygulama Arayüzü ---
+st.set_page_config(layout="wide")
+st.title("Premium Home AI Sosyal Medya Asistanı 🚀")
+st.markdown(f"<p style='font-size:12px; color:#888; text-align: right;'>Sürüm: v3 Beta</p>", unsafe_allow_html=True) # Sürüm bilgisi
+
+st.markdown("""
+    Bu asistan, Premium Home için sosyal medya içerikleri oluşturmanıza, görselleri yorumlamanıza ve yeni fikirler üretmenize yardımcı olur.
+    Metal evler, prefabrik yapılar ve Tiny House kültürü odaklı içerikler üretir.
+    ---
+""")
+
+# --- Sosyal Medya Yetkilendirme Bölümü ---
+st.header("Sosyal Medya Hesaplarını Yetkilendir")
+st.markdown("""
+    İstatistikleri çekebilmek ve diğer sosyal medya özelliklerini kullanabilmek için hesaplarınızı bağlamalısınız.
+    Bu işlem sizi backend servisimize yönlendirecektir.
+""")
+
+col_auth1, col_auth2 = st.columns(2)
+with col_auth1:
+    if st.button("Facebook/Instagram'ı Yetkilendir", type="primary", key="auth_facebook_button"):
+        st.markdown(f"[Facebook/Instagram Yetkilendirme Başlat]({BACKEND_API_URL}/auth/facebook)", unsafe_allow_html=True)
+        st.info("Yukarıdaki linke tıklayın ve Facebook yetkilendirmesini tamamlayın. Ardından bu uygulamaya geri dönün.")
+
+with col_auth2:
+    if st.button("Google/YouTube'u Yetkilendir", type="primary", key="auth_google_button"):
+        st.markdown(f"[Google/YouTube Yetkilendirme Başlat]({BACKEND_API_URL}/auth/google)", unsafe_allow_html=True)
+        st.info("Yukarıdaki linke tıklayın ve Google yetkilendirmesini tamamlayın. Ardından bu uygulamaya geri dönün.")
+
+st.markdown("---")
+
+# --- Metin Oluşturucu Bölümü ---
+st.header("Metin Oluştur")
+prompt_text = st.text_area(
+    'İçerik İsteği:',
+    placeholder='Örn: Kıbrıs\'taki Tiny House projelerinin avantajlarını anlatan bir sosyal medya metni yaz.',
+    height=150,
+    key='prompt_input'
+)
+
+col1, col2 = st.columns(2)
+with col1:
+    language_options = ['Türkçe', 'English', 'Ελληνικά']
+    selected_language = st.selectbox('Çıktı Dili:', language_options, key='lang_selector')
+with col2:
+    if st.button('Metin Oluştur', type="primary", key='generate_text_button'):
+        with st.spinner(f"'{selected_language}' dilinde içerik oluşturuluyor..."):
+            generated_content = generate_text_gemini_flash(prompt_text, selected_language)
+        st.session_state.last_generated_text = generated_content
+        st.session_state.last_selected_language = selected_language
+        st.markdown("### Oluşturulan Metin:")
+        st.code(generated_content, language='markdown')
+
+# --- Sosyal Medya Metnini Formatla ve Paylaş Bölümü ---
+st.header("Sosyal Medya Metnini Formatla ve Paylaş")
+st.markdown("<p style='font-size:13px; color:#555;'>*Yukarıdaki 'Metin Oluştur' bölümünde üretilen son metni kullanır.</p>", unsafe_allow_html=True)
+
+if 'last_generated_text' in st.session_state and st.session_state.last_generated_text:
+    col3, col4 = st.columns(2)
+    with col3:
+        platform_options = ['Instagram', 'Facebook', 'LinkedIn', 'Genel Blog Yazısı', 'E-posta Bülteni', 'Bazaraki.com İlanı'] # Bazaraki eklendi
+        selected_platform = st.selectbox('Formatla:', platform_options, key='platform_selector')
+    with col4:
+        if st.button('Formatla ve Paylaş (AI)', type="secondary", key='format_share_button'):
+            with st.spinner(f"Metin '{selected_platform}' için formatlanıyor..."):
+                formatted_text = format_text_for_social_media(st.session_state.last_generated_text, selected_platform, st.session_state.last_selected_language)
             st.markdown("### Oluşturulan Metin:")
-            st.code(generated_content, language='markdown')
+            st.code(formatted_text, language='markdown')
 
-    # --- Sosyal Medya Metnini Formatla ve Paylaş Bölümü ---
-    st.header("Sosyal Medya Metnini Formatla ve Paylaş")
-    st.markdown("<p style='font-size:13px; color:#555;'>*Yukarıdaki 'Metin Oluştur' bölümünde üretilen son metni kullanır.</p>", unsafe_allow_html=True)
+            encoded_formatted_text_share = requests.utils.quote(formatted_text)
+            website_url = "https://www.premiumpluscy.eu"
+            linkedin_share_url = f"https://www.linkedin.com/feed/?shareActive=true&text={encoded_formatted_text_share}"
+            facebook_share_url = f"https://www.facebook.com/sharer/sharer.php?quote={encoded_formatted_text_share}"
+            instagram_placeholder_url = "https://www.instagram.com/" # Instagram için doğrudan paylaşım URL'si olmadığı için placeholder
 
-    if 'last_generated_text' in st.session_state and st.session_state.last_generated_text:
-        col3, col4 = st.columns(2)
-        with col3:
-            platform_options = ['Instagram', 'Facebook', 'LinkedIn', 'Genel Blog Yazısı', 'E-posta Bülteni', 'Bazaraki.com İlanı'] # Bazaraki eklendi
-            selected_platform = st.selectbox('Formatla:', platform_options, key='platform_selector')
-        with col4:
-            if st.button('Formatla ve Paylaş (AI)', type="secondary", key='format_share_button'):
-                with st.spinner(f"Metin '{selected_platform}' için formatlanıyor..."):
-                    formatted_text = format_text_for_social_media(st.session_state.last_generated_text, selected_platform, st.session_state.last_selected_language)
-                st.markdown("### Oluşturulan Metin:")
-                st.code(formatted_text, language='markdown')
-
-                encoded_formatted_text_share = requests.utils.quote(formatted_text)
-                website_url = "https://www.premiumpluscy.eu"
-                linkedin_share_url = f"https://www.linkedin.com/feed/?shareActive=true&text={encoded_formatted_text_share}"
-                facebook_share_url = f"https://www.facebook.com/sharer/sharer.php?quote={encoded_formatted_text_share}"
-                instagram_placeholder_url = "https://www.instagram.com/" # Instagram için doğrudan paylaşım URL'si olmadığı için placeholder
-
-                st.markdown(f"""
-                <div class="social-media-buttons-container">
-                    <a href="{website_url}" target='_blank' class='social-button website'>Web Sitesine Git</a>
-                    <a href="{linkedin_share_url}" target='_blank' class='social-button linkedin'>LinkedIn'de Paylaş</a>
-                    <a href="{instagram_placeholder_url}" target='_blank' class='social-button instagram'>Instagram'da Paylaş</a>
-                    <a href="{facebook_share_url}" target='_blank' class='social-button facebook'>Facebook'ta Paylaş</a>
-                    <p style="font-size:12px; color:#666; margin-top:10px;"><i>Not: Bu butonlar manuel paylaşıma yönlendirir, API entegrasyonu backend'de yapılır.</i></p>
-                </div>
-                """, unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="social-media-buttons-container">
+                <a href="{website_url}" target='_blank' class='social-button website'>Web Sitesine Git</a>
+                <a href="{linkedin_share_url}" target='_blank' class='social-button linkedin'>LinkedIn'de Paylaş</a>
+                <a href="{instagram_placeholder_url}" target='_blank' class='social-button instagram'>Instagram'da Paylaş</a>
+                <a href="{facebook_share_url}" target='_blank' class='social-button facebook'>Facebook'ta Paylaş</a>
+                <p style="font-size:12px; color:#666; margin-top:10px;"><i>Not: Bu butonlar manuel paylaşıma yönlendirir, API entegrasyonu backend'de yapılır.</i></p>
+            </div>
+            """, unsafe_allow_html=True)
 else:
     st.info("Önce 'Metin Oluştur' bölümünden bir metin oluşturun.")
 
@@ -517,3 +531,43 @@ if st.button('İstatistikleri Çek', type="primary", key='fetch_stats_button'):
 
 st.markdown("---")
 st.markdown("Developed with ❤️ by Premium Home AI Assistant")
+```Harika! `app.py` dosyasındaki girintileme sorununu düzelttiğinizi anladım. Bu, Streamlit uygulamanızın dağıtımını engelleyen önemli bir hataydı.
+
+Şimdi bu düzeltmenin GitHub'a yüklenmesi ve Streamlit Cloud'da yeniden dağıtılması gerekiyor.
+
+**Yapılacaklar:**
+
+1.  **GÖREV: `PremiumHomeSocialAssistant` Klasörüne Gidin ve Sanal Ortamınızı Etkinleştirin:**
+    * Terminalinizde `PremiumHomeSocialAssistant` klasörüne gidin:
+        ```bash
+        cd ~/Documents/GitHub/PremiumHomeSocialAssistant
+        ```
+    * Sanal ortamınızı etkinleştirin:
+        ```bash
+        source venv/bin/activate
+        ```
+
+2.  **GÖREV: Değişiklikleri GitHub'a Yükleyin:**
+    * **Değişiklikleri Sahne Alanına Ekleyin (Staging):**
+        ```bash
+        git add .
+        ```
+    * **Değişiklikleri Kaydedin (Commit):**
+        ```bash
+        git commit -m "FIX: app.py IndentationError düzeltildi"
+        ```
+    * **Değişiklikleri GitHub'a Gönderin (Push):**
+        ```bash
+        git push origin main
+        ```
+
+3.  **GÖREV: Streamlit Cloud'da Uygulamayı Yeniden Dağıtın:**
+    * GitHub'a yüklendikten sonra [https://share.streamlit.io/](https://share.streamlit.io/) adresine gidin.
+    * `PremiumHomeSocialAssistant` uygulamanıza tıklayın.
+    * Uygulamanızın yanındaki **üç noktaya** tıklayın ve **"Redeploy" (Yeniden Dağıt)** seçeneğini seçin.
+
+**Yaptım Dedikten Sonra:**
+
+Bu adımları tamamladığınızda, lütfen "**Yaptım, frontend IndentationError düzeltildi ve dağıtım başlatıldı**" deyin.
+
+Uygulama dağıtıldıktan sonra, canlı URL üzerinden tüm fonksiyonları tekrar test edel
