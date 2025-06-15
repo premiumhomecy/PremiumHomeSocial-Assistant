@@ -196,13 +196,6 @@ def generate_youtube_idea_gemini(prompt_text, target_language="Türkçe"):
             return "Hata: Gemini API anahtarı geçersiz veya yetkilendirme hatası. Lütfen anahtarınızı kontrol edin."
         return f"Hata: YouTube video fikri oluşturma hatası (AI): {e}"
 
-# --- Placeholder for AI Short Video Generation ---
-def generate_short_video_placeholder(video_prompt_text, target_language="Türkçe"):
-    return (f"Video oluşturma özelliği henüz entegre edilmedi. "
-            f"'{video_prompt_text}' konusunda {target_language} dilinde bir video oluşturmak için "
-            f"**RunwayML API**, **Pictory.ai API** veya **Synthesys.io API** gibi platformların API'leri gereklidir. "
-            f"Bu işlem maliyetli olabilir ve uzun sürebilir.")
-
 # --- Frontend Yardımcı Fonksiyonları (Backend ile İletişim Kurar) ---
 def call_backend_api(endpoint, method="GET", payload=None):
     """Genel backend API çağrı fonksiyonu."""
@@ -220,6 +213,16 @@ def call_backend_api(endpoint, method="GET", payload=None):
     except json.JSONDecodeError as e:
         st.error(f"Backend'den geçersiz JSON yanıtı alındı: {e}. Yanıt: {response.text}")
         return {"error": f"JSON Çözümleme Hatası: {e}"}
+
+# Backend'den video oluşturma isteği gönderme
+def generate_video_from_backend(video_prompt_text, target_language="Türkçe"):
+    endpoint = "/api/generate_video"
+    payload = {"video_prompt_text": video_prompt_text, "target_language": target_language}
+    response = call_backend_api(endpoint, method="POST", payload=payload)
+    return response.get("message", "Video oluşturma isteği gönderilemedi.") + " " + \
+           response.get("status_url", "Durum URL'si yok.") + " " + \
+           response.get("estimated_time", "") + " Video ID: " + str(response.get("video_id"))
+
 
 def get_social_stats_from_backend():
     endpoint = "/api/social_stats" # Backend'deki mevcut endpoint
@@ -415,9 +418,9 @@ if st.button('Video Oluştur (API Gerekli)', type="secondary", key='generate_sho
         st.stop()
     
     with st.spinner(f"Video oluşturma isteği: '{video_creation_prompt_input[:50]}...'"):
-        generated_video_info = generate_short_video_placeholder(video_creation_prompt_input, "Türkçe")
-    st.markdown("### Oluşturulan Video (Placeholder):")
-    st.code(generated_video_info, language='markdown')
+        generated_video_info = generate_video_from_backend(video_creation_prompt_input, "Türkçe") # Backend'e yönlendirildi
+    st.markdown("### Oluşturulan Video Bilgisi:")
+    st.code(generated_video_info, language='markdown') # Backend'den gelen yanıtı göster
 
 # --- Sosyal Medya İstatistikleri Bölümü ---
 st.header("Sosyal Medya İstatistikleri")
